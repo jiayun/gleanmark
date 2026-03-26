@@ -33,11 +33,10 @@ impl QdrantManager {
         std::fs::create_dir_all(&storage_path)?;
 
         let child = Command::new(&binary)
-            .arg("--storage-path")
-            .arg(&storage_path)
             .arg("--disable-telemetry")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .env("QDRANT__STORAGE__STORAGE_PATH", &storage_path)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| Error::Other(format!("Failed to start Qdrant: {e}")))?;
 
@@ -95,21 +94,37 @@ impl QdrantManager {
     }
 
     fn find_binary(config: &Config) -> Result<std::path::PathBuf> {
-        // Check ~/.gleanmark/bin/qdrant
-        let local_bin = config.data_dir.join("bin").join("qdrant");
-        if local_bin.exists() {
-            return Ok(local_bin);
+        // 1. Check config data_dir (macOS: ~/Library/Application Support/gleanmark/bin/)
+        let data_dir_bin = config.data_dir.join("bin").join("qdrant");
+        if data_dir_bin.exists() {
+            return Ok(data_dir_bin);
         }
 
-        // Check PATH
+        // 2. Check XDG-style path (~/.local/share/gleanmark/bin/)
+        if let Some(home) = dirs::home_dir() {
+            let xdg_bin = home
+                .join(".local")
+                .join("share")
+                .join("gleanmark")
+                .join("bin")
+                .join("qdrant");
+            if xdg_bin.exists() {
+                return Ok(xdg_bin);
+            }
+        }
+
+        // 3. Check PATH
         if let Ok(path) = which("qdrant") {
             return Ok(path);
         }
 
         Err(Error::Other(format!(
-            "Qdrant binary not found. Install it to {} or add it to PATH.\n\
+            "Qdrant binary not found. Place it in one of:\n\
+             - {}\n\
+             - ~/.local/share/gleanmark/bin/qdrant\n\
+             - Anywhere on $PATH\n\
              Download from: https://github.com/qdrant/qdrant/releases",
-            local_bin.display()
+            data_dir_bin.display()
         )))
     }
 }
