@@ -1,0 +1,18 @@
+[package]
+name = "gleanmark-server"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "HTTP API server for GleanMark"
+
+[dependencies]
+gleanmark-core = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+anyhow = "1"

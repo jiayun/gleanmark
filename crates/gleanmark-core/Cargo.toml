@@ -1,0 +1,19 @@
+[package]
+name = "gleanmark-core"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Core library for GleanMark bookmark search"
+
+[dependencies]
+qdrant-client = "1.16"
+fastembed = "5"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+anyhow = "1"
