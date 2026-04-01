@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GleanMark</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>GleanMark</h1>
+      <nav>
+        <a href="#search" data-view="search" class="active">Search</a>
+        <a href="#bookmarks" data-view="bookmarks">Bookmarks</a>
+        <a href="#import-export" data-view="import-export">Import / Export</a>
+      </nav>
+    </header>
+
+    <main>
+      <!-- Search View -->
+      <section data-view="search">
+        <form id="search-form" class="search-bar">
+          <input type="text" id="search-input" placeholder="Search your bookmarks..." autofocus>
+          <button type="submit">Search</button>
+        </form>
+        <div id="search-results" class="results">
+          <p class="empty-state">Type a query to search your bookmarks.</p>
+        </div>
+      </section>
+
+      <!-- Bookmarks View -->
+      <section data-view="bookmarks" class="hidden">
+        <div class="view-header">
+          <span id="bookmark-count"></span>
+        </div>
+        <div id="bookmark-list" class="results"></div>
+        <button id="load-more" class="btn-secondary hidden">Load More</button>
+      </section>
+
+      <!-- Import/Export View -->
+      <section data-view="import-export" class="hidden">
+        <div class="ie-section">
+          <h2>Export Bookmarks</h2>
+          <p class="hint">Save all bookmarks to a JSON file on this machine.</p>
+          <form id="export-form" class="ie-form">
+            <input type="text" id="export-path" value="~/gleanmark-export.json" placeholder="File path">
+            <button type="submit">Export</button>
+          </form>
+          <div id="export-status" class="status"></div>
+        </div>
+        <div class="ie-section">
+          <h2>Import Bookmarks</h2>
+          <p class="hint">Load bookmarks from a JSON file previously exported.</p>
+          <form id="import-form" class="ie-form">
+            <input type="text" id="import-path" placeholder="File path">
+            <button type="submit">Import</button>
+          </form>
+          <div id="import-status" class="status"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

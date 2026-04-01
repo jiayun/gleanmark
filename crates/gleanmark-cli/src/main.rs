@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use gleanmark_core::models::{BookmarkInput, Config, SearchQuery};
 use gleanmark_core::GleanMark;
+use serde::Deserialize;
 
 #[derive(Parser)]
 #[command(name = "gleanmark", about = "Bookmark semantic search tool")]
@@ -169,9 +170,10 @@ async fn main() -> anyhow::Result<()> {
 async fn serve(port: u16) -> anyhow::Result<()> {
     use std::sync::Arc;
 
+    use axum::extract::{Path, Query};
     use axum::http::StatusCode;
     use axum::response::IntoResponse;
-    use axum::routing::{get, post};
+    use axum::routing::{delete, get, post};
     use axum::{Json, Router};
     use tower_http::cors::{Any, CorsLayer};
 
@@ -206,6 +208,44 @@ async fn serve(port: u16) -> anyhow::Result<()> {
             }),
         )
         .route(
+            "/api/bookmarks",
+            get({
+                let gm = Arc::clone(&gm);
+                move |Query(params): Query<ListParams>| {
+                    let gm = Arc::clone(&gm);
+                    async move {
+                        match gm.list(params.limit).await {
+                            Ok(b) => Json(serde_json::to_value(b).unwrap()).into_response(),
+                            Err(e) => (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(serde_json::json!({"error": e.to_string()})),
+                            )
+                                .into_response(),
+                        }
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/bookmarks/{id}",
+            delete({
+                let gm = Arc::clone(&gm);
+                move |Path(id): Path<String>| {
+                    let gm = Arc::clone(&gm);
+                    async move {
+                        match gm.delete(&id).await {
+                            Ok(()) => StatusCode::NO_CONTENT.into_response(),
+                            Err(e) => (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(serde_json::json!({"error": e.to_string()})),
+                            )
+                                .into_response(),
+                        }
+                    }
+                }
+            }),
+        )
+        .route(
             "/api/search",
             post({
                 let gm = Arc::clone(&gm);
@@ -224,6 +264,49 @@ async fn serve(port: u16) -> anyhow::Result<()> {
                 }
             }),
         )
+        .route(
+            "/api/export",
+            post({
+                let gm = Arc::clone(&gm);
+                move |Json(req): Json<ExportRequest>| {
+                    let gm = Arc::clone(&gm);
+                    async move {
+                        match gm.export_json(std::path::Path::new(&req.path)).await {
+                            Ok(count) => {
+                                Json(serde_json::json!({"exported": count})).into_response()
+                            }
+                            Err(e) => (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(serde_json::json!({"error": e.to_string()})),
+                            )
+                                .into_response(),
+                        }
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/import",
+            post({
+                let gm = Arc::clone(&gm);
+                move |Json(req): Json<ImportRequest>| {
+                    let gm = Arc::clone(&gm);
+                    async move {
+                        match gm.import_json(std::path::Path::new(&req.path)).await {
+                            Ok(count) => {
+                                Json(serde_json::json!({"imported": count})).into_response()
+                            }
+                            Err(e) => (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(serde_json::json!({"error": e.to_string()})),
+                            )
+                                .into_response(),
+                        }
+                    }
+                }
+            }),
+        )
+        .fallback(static_handler)
         .layer(cors);
 
     let addr = format!("127.0.0.1:{port}");
@@ -232,4 +315,53 @@ async fn serve(port: u16) -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+#[derive(Deserialize)]
+struct ListParams {
+    #[serde(default = "default_limit")]
+    limit: usize,
+}
+
+fn default_limit() -> usize {
+    50
+}
+
+#[derive(Deserialize)]
+struct ExportRequest {
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct ImportRequest {
+    path: String,
+}
+
+#[derive(rust_embed::Embed)]
+#[folder = "../../crates/gleanmark-server/static/"]
+struct Assets;
+
+async fn static_handler(uri: axum::http::Uri) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let path = uri.path().trim_start_matches('/');
+    let path = if path.is_empty() { "index.html" } else { path };
+
+    match Assets::get(path) {
+        Some(file) => {
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            (
+                [(axum::http::header::CONTENT_TYPE, mime.as_ref())],
+                file.data.to_vec(),
+            )
+                .into_response()
+        }
+        None => match Assets::get("index.html") {
+            Some(file) => (
+                [(axum::http::header::CONTENT_TYPE, "text/html")],
+                file.data.to_vec(),
+            )
+                .into_response(),
+            None => axum::http::StatusCode::NOT_FOUND.into_response(),
+        },
+    }
 }

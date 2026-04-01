@@ -16,3 +16,5 @@ thiserror = { workspace = true }
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
 anyhow = "1"
+rust-embed = "8"
+mime_guess = "2"

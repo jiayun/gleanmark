@@ -24,6 +24,7 @@ target
 data/
 
 docs/bookmark-search-project.md
+docs/web-ui-and-desktop-app.md
 
 .fastembed_cache/
 .qdrant-initialized

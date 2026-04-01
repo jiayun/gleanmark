@@ -34,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/search", post(search_bookmarks))
         .route("/api/export", post(export_bookmarks))
         .route("/api/import", post(import_bookmarks))
+        .fallback(static_handler)
         .layer(cors)
         .with_state(state);
 
@@ -134,5 +135,33 @@ impl IntoResponse for AppError {
 impl From<gleanmark_core::error::Error> for AppError {
     fn from(err: gleanmark_core::error::Error) -> Self {
         AppError(err)
+    }
+}
+
+#[derive(rust_embed::Embed)]
+#[folder = "static/"]
+struct Assets;
+
+async fn static_handler(uri: axum::http::Uri) -> impl IntoResponse {
+    let path = uri.path().trim_start_matches('/');
+    let path = if path.is_empty() { "index.html" } else { path };
+
+    match Assets::get(path) {
+        Some(file) => {
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            (
+                [(axum::http::header::CONTENT_TYPE, mime.as_ref())],
+                file.data.to_vec(),
+            )
+                .into_response()
+        }
+        None => match Assets::get("index.html") {
+            Some(file) => (
+                [(axum::http::header::CONTENT_TYPE, "text/html")],
+                file.data.to_vec(),
+            )
+                .into_response(),
+            None => StatusCode::NOT_FOUND.into_response(),
+        },
     }
 }
