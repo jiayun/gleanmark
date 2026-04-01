@@ -24,3 +24,7 @@ target
 data/
 
 docs/bookmark-search-project.md
+
+.fastembed_cache/
+.qdrant-initialized
+storage/
