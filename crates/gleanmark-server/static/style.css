@@ -1,3 +1,55 @@
+/* Light theme (default) */
+:root {
+  --bg-primary: #f8f9fa;
+  --bg-card: #ffffff;
+  --bg-input: #ffffff;
+  --bg-hover: #f0f0f0;
+  --bg-tag: #eef3fb;
+  --text-primary: #1a1a1a;
+  --text-secondary: #666;
+  --text-muted: #888;
+  --text-placeholder: #999;
+  --border: #ddd;
+  --border-card: #e8e8e8;
+  --border-hover: #c0c0c0;
+  --accent: #4a90d9;
+  --accent-hover: #357abd;
+  --accent-text: #4a90d9;
+  --delete-color: #ccc;
+  --delete-hover: #e53935;
+  --delete-bg: #fce8e6;
+  --success-color: #1e7e34;
+  --success-bg: #e6f4ea;
+  --error-color: #c5221f;
+  --error-bg: #fce8e6;
+}
+
+/* Dark theme */
+:root.dark {
+  --bg-primary: #111827;
+  --bg-card: #1f2937;
+  --bg-input: #1f2937;
+  --bg-hover: #374151;
+  --bg-tag: #1e3a5f;
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --text-placeholder: #6b7280;
+  --border: #374151;
+  --border-card: #374151;
+  --border-hover: #4b5563;
+  --accent: #60a5fa;
+  --accent-hover: #3b82f6;
+  --accent-text: #60a5fa;
+  --delete-color: #6b7280;
+  --delete-hover: #ef4444;
+  --delete-bg: rgba(239, 68, 68, 0.15);
+  --success-color: #34d399;
+  --success-bg: rgba(52, 211, 153, 0.15);
+  --error-color: #f87171;
+  --error-bg: rgba(248, 113, 113, 0.15);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -7,9 +59,10 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
-  color: #1a1a1a;
-  background: #f8f9fa;
+  color: var(--text-primary);
+  background: var(--bg-primary);
   line-height: 1.5;
+  transition: background 0.2s, color 0.2s;
 }
 
 .container {
@@ -23,23 +76,49 @@ header {
   margin-bottom: 24px;
 }
 
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
 header h1 {
   font-size: 20px;
   font-weight: 700;
-  margin-bottom: 12px;
+}
+
+.btn-icon {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-icon:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 nav {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--border);
   padding-bottom: 0;
 }
 
 nav a {
   padding: 8px 16px;
   text-decoration: none;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
   border-bottom: 2px solid transparent;
@@ -48,12 +127,12 @@ nav a {
 }
 
 nav a:hover {
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 nav a.active {
-  color: #4a90d9;
-  border-bottom-color: #4a90d9;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 /* Search bar */
@@ -66,21 +145,23 @@ nav a.active {
 .search-bar input {
   flex: 1;
   padding: 10px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 14px;
   font-family: inherit;
   outline: none;
+  background: var(--bg-input);
+  color: var(--text-primary);
   transition: border-color 0.15s;
 }
 
 .search-bar input:focus {
-  border-color: #4a90d9;
+  border-color: var(--accent);
 }
 
 .search-bar button {
   padding: 10px 20px;
-  background: #4a90d9;
+  background: var(--accent);
   color: white;
   border: none;
   border-radius: 6px;
@@ -91,7 +172,7 @@ nav a.active {
 }
 
 .search-bar button:hover {
-  background: #357abd;
+  background: var(--accent-hover);
 }
 
 /* Results */
@@ -103,21 +184,21 @@ nav a.active {
 
 .empty-state {
   text-align: center;
-  color: #999;
+  color: var(--text-placeholder);
   padding: 40px 0;
 }
 
 /* Card */
 .card {
-  background: white;
-  border: 1px solid #e8e8e8;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
   border-radius: 8px;
   padding: 14px 16px;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, background 0.2s;
 }
 
 .card:hover {
-  border-color: #c0c0c0;
+  border-color: var(--border-hover);
 }
 
 .card-header {
@@ -131,17 +212,17 @@ nav a.active {
 .card-title {
   font-size: 15px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   text-decoration: none;
 }
 
 .card-title:hover {
-  color: #4a90d9;
+  color: var(--accent);
 }
 
 .card-url {
   font-size: 12px;
-  color: #888;
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -158,8 +239,8 @@ nav a.active {
 .tag {
   display: inline-block;
   padding: 2px 8px;
-  background: #eef3fb;
-  color: #4a90d9;
+  background: var(--bg-tag);
+  color: var(--accent-text);
   border-radius: 10px;
   font-size: 11px;
   font-weight: 500;
@@ -167,14 +248,14 @@ nav a.active {
 
 .score {
   font-size: 11px;
-  color: #999;
+  color: var(--text-placeholder);
   margin-left: auto;
 }
 
 .btn-delete {
   background: none;
   border: none;
-  color: #ccc;
+  color: var(--delete-color);
   cursor: pointer;
   font-size: 16px;
   padding: 2px 6px;
@@ -184,15 +265,15 @@ nav a.active {
 }
 
 .btn-delete:hover {
-  color: #e53935;
-  background: #fce8e6;
+  color: var(--delete-hover);
+  background: var(--delete-bg);
 }
 
 /* View header */
 .view-header {
   margin-bottom: 16px;
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 /* Load more */
@@ -201,23 +282,23 @@ nav a.active {
   width: 100%;
   padding: 10px;
   margin-top: 12px;
-  background: white;
-  border: 1px solid #ddd;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .btn-secondary:hover {
-  background: #f0f0f0;
+  background: var(--bg-hover);
 }
 
 /* Import/Export */
 .ie-section {
-  background: white;
-  border: 1px solid #e8e8e8;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 16px;
@@ -231,7 +312,7 @@ nav a.active {
 
 .hint {
   font-size: 13px;
-  color: #888;
+  color: var(--text-muted);
   margin-bottom: 12px;
 }
 
@@ -243,21 +324,23 @@ nav a.active {
 .ie-form input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 13px;
   font-family: inherit;
   outline: none;
+  background: var(--bg-input);
+  color: var(--text-primary);
   transition: border-color 0.15s;
 }
 
 .ie-form input:focus {
-  border-color: #4a90d9;
+  border-color: var(--accent);
 }
 
 .ie-form button {
   padding: 8px 16px;
-  background: #4a90d9;
+  background: var(--accent);
   color: white;
   border: none;
   border-radius: 6px;
@@ -268,7 +351,7 @@ nav a.active {
 }
 
 .ie-form button:hover {
-  background: #357abd;
+  background: var(--accent-hover);
 }
 
 /* Status messages */
@@ -279,15 +362,15 @@ nav a.active {
 }
 
 .status.success {
-  color: #1e7e34;
-  background: #e6f4ea;
+  color: var(--success-color);
+  background: var(--success-bg);
   padding: 8px 12px;
   border-radius: 6px;
 }
 
 .status.error {
-  color: #c5221f;
-  background: #fce8e6;
+  color: var(--error-color);
+  background: var(--error-bg);
   padding: 8px 12px;
   border-radius: 6px;
 }
@@ -300,6 +383,6 @@ nav a.active {
 /* Loading spinner */
 .loading {
   text-align: center;
-  color: #999;
+  color: var(--text-placeholder);
   padding: 20px 0;
 }
