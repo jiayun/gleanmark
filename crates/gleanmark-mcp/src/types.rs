@@ -6,7 +6,7 @@ pub struct SearchParams {
     /// Search query (supports semantic and keyword matching).
     pub query: String,
 
-    /// Maximum number of results to return.
+    /// Maximum number of results to return (default: 10).
     #[serde(default)]
     pub limit: Option<usize>,
 
@@ -17,9 +17,13 @@ pub struct SearchParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListParams {
-    /// Maximum number of bookmarks to return.
+    /// Maximum number of bookmarks to return (default: 20).
     #[serde(default)]
     pub limit: Option<usize>,
+
+    /// Bookmark ID to start after (for pagination). Use the last bookmark's ID from the previous page.
+    #[serde(default)]
+    pub offset: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

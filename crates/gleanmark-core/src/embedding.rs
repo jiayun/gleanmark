@@ -38,14 +38,29 @@ fn segment_for_sparse(text: &str) -> String {
 
 impl EmbeddingService {
     pub fn new() -> Result<Self> {
-        let dense = TextEmbedding::try_new(
-            InitOptions::new(EmbeddingModel::MultilingualE5Small)
-                .with_show_download_progress(true),
-        )?;
+        Self::with_options(true)
+    }
 
-        let sparse = SparseTextEmbedding::try_new(
-            SparseInitOptions::new(SparseModel::SPLADEPPV1).with_show_download_progress(true),
-        )?;
+    pub fn with_options(show_download_progress: bool) -> Result<Self> {
+        Self::with_full_options(show_download_progress, None)
+    }
+
+    pub fn with_full_options(
+        show_download_progress: bool,
+        cache_dir: Option<std::path::PathBuf>,
+    ) -> Result<Self> {
+        let mut dense_opts = InitOptions::new(EmbeddingModel::MultilingualE5Small)
+            .with_show_download_progress(show_download_progress);
+        let mut sparse_opts = SparseInitOptions::new(SparseModel::SPLADEPPV1)
+            .with_show_download_progress(show_download_progress);
+
+        if let Some(ref dir) = cache_dir {
+            dense_opts = dense_opts.with_cache_dir(dir.clone());
+            sparse_opts = sparse_opts.with_cache_dir(dir.clone());
+        }
+
+        let dense = TextEmbedding::try_new(dense_opts)?;
+        let sparse = SparseTextEmbedding::try_new(sparse_opts)?;
 
         Ok(Self {
             dense: Arc::new(Mutex::new(dense)),

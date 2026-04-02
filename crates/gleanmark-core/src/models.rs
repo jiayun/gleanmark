@@ -46,6 +46,8 @@ pub struct Config {
     pub qdrant_url: String,
     pub data_dir: PathBuf,
     pub collection_name: String,
+    /// Show download progress for embedding models (disable for MCP/stdio)
+    pub show_download_progress: bool,
 }
 
 impl Default for Config {
@@ -58,6 +60,7 @@ impl Default for Config {
             qdrant_url: "http://localhost:6334".to_string(),
             data_dir,
             collection_name: "bookmarks".to_string(),
+            show_download_progress: true,
         }
     }
 }

@@ -29,7 +29,9 @@ impl GleanMark {
 
         let qdrant_manager = QdrantManager::start(&config).await?;
         let storage = Storage::new(qdrant_manager.url(), &config.collection_name).await?;
-        let embedding = EmbeddingService::new()?;
+        let cache_dir = config.data_dir.join("models");
+        let embedding =
+            EmbeddingService::with_full_options(config.show_download_progress, Some(cache_dir))?;
 
         Ok(Self {
             embedding,

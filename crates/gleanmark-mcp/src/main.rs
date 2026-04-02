@@ -1,10 +1,6 @@
 mod server;
 mod types;
 
-use std::sync::Arc;
-
-use gleanmark_core::models::Config;
-use gleanmark_core::GleanMark;
 use rmcp::ServiceExt;
 use tracing_subscriber::EnvFilter;
 
@@ -18,10 +14,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_writer(std::io::stderr)
         .init();
 
-    let config = Config::default();
-    let gm = Arc::new(GleanMark::new(config).await?);
-
-    let mcp_server = server::GleanMarkMcp::new(gm);
+    // Create MCP server immediately (GleanMark initialized lazily on first tool call)
+    let mcp_server = server::GleanMarkMcp::new();
     let transport = rmcp::transport::io::stdio();
 
     let service = mcp_server.serve(transport).await?;
