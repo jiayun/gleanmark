@@ -59,6 +59,7 @@ jobs:
       - name: Download Qdrant sidecar binary
         shell: bash
         run: |
+          mkdir -p crates/gleanmark-tauri/binaries
           cd crates/gleanmark-tauri/binaries
           ASSET="${{ matrix.qdrant_asset }}"
           URL="https://github.com/qdrant/qdrant/releases/download/${{ env.QDRANT_VERSION }}/${ASSET}"
