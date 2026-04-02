@@ -1,4 +1,12 @@
-const API_BASE = "http://localhost:21580";
+const DEFAULT_URL = "http://localhost:21580";
+
+async function getApiBase() {
+  return new Promise((resolve) => {
+    chrome.storage.sync.get({ serverUrl: DEFAULT_URL }, (items) => {
+      resolve(items.serverUrl);
+    });
+  });
+}
 
 document.addEventListener("DOMContentLoaded", async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -42,7 +50,8 @@ document.getElementById("save").addEventListener("click", async () => {
   };
 
   try {
-    const res = await fetch(`${API_BASE}/api/bookmarks`, {
+    const apiBase = await getApiBase();
+    const res = await fetch(`${apiBase}/api/bookmarks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
