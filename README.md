@@ -35,9 +35,11 @@ GleanMark lets you save web articles as bookmarks with their content, then find 
 
 Download the latest release from [GitHub Releases](https://github.com/jiayun/gleanmark/releases):
 
-- **macOS**: `.dmg` (Apple Silicon or Intel)
+- **macOS**: `.dmg` (Apple Silicon)
 - **Windows**: `.msi` installer
 - **Linux**: `.deb` or `.AppImage`
+
+> **macOS**: If you see a security warning, run `xattr -cr /Applications/GleanMark.app` (the app is not yet notarized by Apple).
 
 The app auto-manages Qdrant and embedding models. First launch may take a moment to download models (~100MB, one-time only).
 
