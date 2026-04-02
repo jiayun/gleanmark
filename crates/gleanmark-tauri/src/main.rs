@@ -1,192 +1,158 @@
-use std::path::PathBuf;
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use clap::{Parser, Subcommand};
-use gleanmark_core::models::{BookmarkInput, Config, SearchQuery};
-use gleanmark_core::GleanMark;
-use serde::Deserialize;
+mod tray;
 
-#[derive(Parser)]
-#[command(name = "gleanmark", about = "Bookmark semantic search tool")]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
+use std::sync::Arc;
 
-    /// Output as JSON
-    #[arg(long, global = true)]
-    json: bool,
-}
+use tauri::Manager;
 
-#[derive(Subcommand)]
-enum Commands {
-    /// Add a bookmark
-    Add {
-        /// URL of the bookmark
-        url: String,
-        /// Title
-        #[arg(short, long)]
-        title: Option<String>,
-        /// Content / description
-        #[arg(short, long)]
-        content: Option<String>,
-        /// Tags (comma-separated)
-        #[arg(long, value_delimiter = ',')]
-        tags: Option<Vec<String>>,
-    },
-    /// Search bookmarks
-    Search {
-        /// Search query
-        query: String,
-        /// Max results
-        #[arg(short, long, default_value = "10")]
-        limit: usize,
-        /// Filter by tags (comma-separated)
-        #[arg(long, value_delimiter = ',')]
-        tags: Option<Vec<String>>,
-    },
-    /// List bookmarks
-    List {
-        /// Max results
-        #[arg(short, long, default_value = "50")]
-        limit: usize,
-    },
-    /// Delete a bookmark by ID
-    Delete {
-        /// Bookmark ID
-        id: String,
-    },
-    /// Export bookmarks to JSON file
-    Export {
-        /// Output file path
-        path: PathBuf,
-    },
-    /// Import bookmarks from JSON file
-    Import {
-        /// Input file path
-        path: PathBuf,
-    },
-    /// Re-embed all bookmarks with current models
-    Reindex,
-    /// Start the HTTP API server
-    Serve {
-        /// Port to listen on
-        #[arg(short, long, default_value = "21580")]
-        port: u16,
-    },
-}
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() {
     tracing_subscriber::fmt::init();
 
-    let cli = Cli::parse();
-    let config = Config::default();
-    let gm = GleanMark::new(config).await?;
+    tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            let handle = app.handle().clone();
 
-    match cli.command {
-        Commands::Add {
-            url,
-            title,
-            content,
-            tags,
-        } => {
-            let input = BookmarkInput {
-                url: url.clone(),
-                title: title.unwrap_or_else(|| url.clone()),
-                content: content.unwrap_or_default(),
-                tags,
-            };
-            let bookmark = gm.save_bookmark(input).await?;
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&bookmark)?);
-            } else {
-                println!("Saved: {} ({})", bookmark.title, bookmark.id);
-            }
-        }
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = start_app(&handle).await {
+                    eprintln!("Failed to start: {e}");
+                    std::process::exit(1);
+                }
+            });
 
-        Commands::Search { query, limit, tags } => {
-            let sq = SearchQuery {
-                query,
-                limit: Some(limit),
-                tags,
-            };
-            let results = gm.search(sq).await?;
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&results)?);
-            } else if results.is_empty() {
-                println!("No results found.");
-            } else {
-                for r in &results {
-                    println!(
-                        "[{:.3}] {} — {}",
-                        r.score, r.bookmark.title, r.bookmark.url
-                    );
-                    if !r.bookmark.tags.is_empty() {
-                        println!("       tags: {}", r.bookmark.tags.join(", "));
-                    }
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Hide window on close instead of quitting (stay in tray)
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    let _ = window.hide();
+                    api.prevent_close();
                 }
             }
-        }
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
 
-        Commands::List { limit } => {
-            let bookmarks = gm.list(limit, None).await?;
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&bookmarks)?);
-            } else if bookmarks.is_empty() {
-                println!("No bookmarks.");
-            } else {
-                for b in &bookmarks {
-                    println!("{} — {} ({})", b.id, b.title, b.url);
-                }
-            }
-        }
+async fn start_app(handle: &tauri::AppHandle) -> anyhow::Result<()> {
+    // Update splash screen status
+    update_splash(handle, "Starting Qdrant...");
 
-        Commands::Delete { id } => {
-            gm.delete(&id).await?;
-            println!("Deleted: {id}");
-        }
+    // Prepare Qdrant sidecar symlink
+    prepare_sidecar();
 
-        Commands::Export { path } => {
-            let count = gm.export_json(&path).await?;
-            println!("Exported {count} bookmarks to {}", path.display());
-        }
+    // Initialize backend (starts Qdrant, loads models)
+    update_splash(handle, "Loading embedding models...");
+    let config = gleanmark_core::models::Config::default();
+    let gm = Arc::new(gleanmark_core::GleanMark::new(config).await?);
 
-        Commands::Import { path } => {
-            let count = gm.import_json(&path).await?;
-            println!("Imported {count} bookmarks from {}", path.display());
-        }
+    // Start Axum server in background
+    update_splash(handle, "Starting server...");
+    let gm_for_server = Arc::clone(&gm);
+    tauri::async_runtime::spawn(async move {
+        run_axum_server(gm_for_server).await;
+    });
 
-        Commands::Reindex => {
-            println!("Re-indexing all bookmarks with current embedding models...");
-            let count = gm.reindex().await?;
-            println!("Done. Re-indexed {count} bookmarks.");
-        }
+    // Wait for server to be ready
+    wait_for_server_ready().await;
 
-        Commands::Serve { port } => {
-            // Drop the GleanMark instance - the server creates its own
-            drop(gm);
-            println!("Starting server at http://127.0.0.1:{port}");
-            println!("Note: Use gleanmark-server binary for the HTTP server.");
-            println!("This subcommand is a convenience alias.");
-            // Re-use the server logic by invoking the same flow
-            serve(port).await?;
-        }
+    // Setup tray and global shortcut
+    tray::create_tray(handle)?;
+    tray::register_global_shortcut(handle)
+        .map_err(|e| anyhow::anyhow!("Failed to register shortcut: {e}"))?;
+
+    // Transition: close splash, navigate main window, then show it
+    if let Some(main_win) = handle.get_webview_window("main") {
+        let _ = main_win
+            .navigate("http://127.0.0.1:21580".parse().unwrap());
+        // Give WebView a moment to start loading
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let _ = main_win.show();
+        let _ = main_win.set_focus();
     }
+    if let Some(splash) = handle.get_webview_window("splashscreen") {
+        let _ = splash.close();
+    }
+
+    // Keep GleanMark alive for the app lifetime
+    // QdrantManager::drop will kill Qdrant on process exit
+    std::mem::forget(gm);
 
     Ok(())
 }
 
-async fn serve(port: u16) -> anyhow::Result<()> {
-    use std::sync::Arc;
+fn update_splash(handle: &tauri::AppHandle, msg: &str) {
+    if let Some(splash) = handle.get_webview_window("splashscreen") {
+        let js = format!(
+            "document.getElementById('status').textContent = '{}'",
+            msg.replace('\'', "\\'")
+        );
+        let _ = splash.eval(&js);
+    }
+}
 
+fn prepare_sidecar() {
+    let Some(data_dir) = dirs::data_local_dir() else { return };
+    let bin_dir = data_dir.join("gleanmark").join("bin");
+    let target = bin_dir.join("qdrant");
+
+    if target.exists() {
+        return;
+    }
+
+    let Ok(exe) = std::env::current_exe() else { return };
+    let Some(exe_dir) = exe.parent() else { return };
+
+    let sidecar = exe_dir.join(format!(
+        "qdrant-{}-apple-darwin",
+        std::env::consts::ARCH
+    ));
+
+    if sidecar.exists() {
+        let _ = std::fs::create_dir_all(&bin_dir);
+        #[cfg(unix)]
+        {
+            let _ = std::os::unix::fs::symlink(&sidecar, &target);
+        }
+    }
+}
+
+async fn run_axum_server(gm: Arc<gleanmark_core::GleanMark>) {
     use axum::extract::{Path, Query};
     use axum::http::StatusCode;
     use axum::response::IntoResponse;
     use axum::routing::{delete, get, post};
     use axum::{Json, Router};
+    use serde::Deserialize;
     use tower_http::cors::{Any, CorsLayer};
 
-    let config = Config::default();
-    let gm = Arc::new(GleanMark::new(config).await?);
+    #[derive(Deserialize)]
+    struct OpenRequest {
+        url: String,
+    }
+
+    #[derive(Deserialize)]
+    struct ListParams {
+        #[serde(default = "default_limit")]
+        limit: usize,
+        offset: Option<String>,
+    }
+    fn default_limit() -> usize {
+        50
+    }
+
+    #[derive(Deserialize)]
+    struct ExportRequest {
+        path: String,
+    }
+
+    #[derive(Deserialize)]
+    struct ImportRequest {
+        path: String,
+    }
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -199,7 +165,7 @@ async fn serve(port: u16) -> anyhow::Result<()> {
             "/api/bookmarks",
             post({
                 let gm = Arc::clone(&gm);
-                move |Json(input): Json<BookmarkInput>| {
+                move |Json(input): Json<gleanmark_core::models::BookmarkInput>| {
                     let gm = Arc::clone(&gm);
                     async move {
                         match gm.save_bookmark(input).await {
@@ -222,7 +188,7 @@ async fn serve(port: u16) -> anyhow::Result<()> {
                 move |Query(params): Query<ListParams>| {
                     let gm = Arc::clone(&gm);
                     async move {
-                        match gm.list(params.limit, params.offset.clone()).await {
+                        match gm.list(params.limit, params.offset).await {
                             Ok(b) => Json(serde_json::to_value(b).unwrap()).into_response(),
                             Err(e) => (
                                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -257,7 +223,7 @@ async fn serve(port: u16) -> anyhow::Result<()> {
             "/api/search",
             post({
                 let gm = Arc::clone(&gm);
-                move |Json(query): Json<SearchQuery>| {
+                move |Json(query): Json<gleanmark_core::models::SearchQuery>| {
                     let gm = Arc::clone(&gm);
                     async move {
                         match gm.search(query).await {
@@ -326,46 +292,21 @@ async fn serve(port: u16) -> anyhow::Result<()> {
         .fallback(static_handler)
         .layer(cors);
 
-    let addr = format!("127.0.0.1:{port}");
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    tracing::info!("Server listening on http://{addr}");
-    axum::serve(listener, app).await?;
-
-    Ok(())
-}
-
-#[derive(Deserialize)]
-struct ListParams {
-    #[serde(default = "default_limit")]
-    limit: usize,
-    offset: Option<String>,
-}
-
-fn default_limit() -> usize {
-    50
-}
-
-#[derive(Deserialize)]
-struct ExportRequest {
-    path: String,
-}
-
-#[derive(Deserialize)]
-struct ImportRequest {
-    path: String,
-}
-
-#[derive(Deserialize)]
-struct OpenRequest {
-    url: String,
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:21580")
+        .await
+        .expect("Failed to bind port 21580");
+    axum::serve(listener, app)
+        .await
+        .expect("Axum server failed");
 }
 
 #[derive(rust_embed::Embed)]
-#[folder = "../../crates/gleanmark-server/static/"]
+#[folder = "../gleanmark-server/static/"]
 struct Assets;
 
 async fn static_handler(uri: axum::http::Uri) -> axum::response::Response {
     use axum::response::IntoResponse;
+
     let path = uri.path().trim_start_matches('/');
     let path = if path.is_empty() { "index.html" } else { path };
 
@@ -386,5 +327,17 @@ async fn static_handler(uri: axum::http::Uri) -> axum::response::Response {
                 .into_response(),
             None => axum::http::StatusCode::NOT_FOUND.into_response(),
         },
+    }
+}
+
+async fn wait_for_server_ready() {
+    for _ in 0..60 {
+        if tokio::net::TcpStream::connect("127.0.0.1:21580")
+            .await
+            .is_ok()
+        {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 }

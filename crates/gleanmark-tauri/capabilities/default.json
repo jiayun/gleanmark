@@ -1,0 +1,10 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities",
+  "windows": ["main", "splashscreen"],
+  "permissions": [
+    "core:default",
+    "global-shortcut:default",
+    "shell:allow-open"
+  ]
+}

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/gleanmark-core", "crates/gleanmark-server", "crates/gleanmark-cli"]
+members = ["crates/gleanmark-core", "crates/gleanmark-server", "crates/gleanmark-cli", "crates/gleanmark-tauri"]
 resolver = "2"
 
 [workspace.dependencies]

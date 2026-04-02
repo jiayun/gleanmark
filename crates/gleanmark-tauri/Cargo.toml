@@ -1,9 +1,16 @@
 [package]
-name = "gleanmark-server"
+name = "gleanmark-tauri"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "HTTP API server for GleanMark"
+description = "GleanMark desktop application"
+
+[[bin]]
+name = "gleanmark-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 gleanmark-core = { workspace = true }
@@ -12,10 +19,13 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-thiserror = { workspace = true }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-shell = "2"
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
-anyhow = "1"
 rust-embed = "8"
 mime_guess = "2"
+anyhow = "1"
+dirs = "6"
 open = "5"

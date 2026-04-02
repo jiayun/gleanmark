@@ -26,6 +26,8 @@ data/
 docs/bookmark-search-project.md
 docs/web-ui-and-desktop-app.md
 
+crates/gleanmark-tauri/binaries/qdrant-*
+
 .fastembed_cache/
 .qdrant-initialized
 storage/

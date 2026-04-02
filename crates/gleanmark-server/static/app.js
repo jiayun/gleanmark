@@ -1,3 +1,40 @@
+// Theme: light / dark / system
+const THEME_ICONS = { light: '\u2600', dark: '\u{1F319}', system: '\u{1F5A5}' }; // sun, moon, monitor
+const THEME_CYCLE = ['light', 'dark', 'system'];
+
+function getSystemTheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme) {
+  const actual = theme === 'system' ? getSystemTheme() : theme;
+  document.documentElement.classList.toggle('dark', actual === 'dark');
+}
+
+function initTheme() {
+  const stored = localStorage.getItem('theme') || 'system';
+  applyTheme(stored);
+
+  const btn = document.getElementById('theme-toggle');
+  btn.textContent = THEME_ICONS[stored];
+  btn.addEventListener('click', () => {
+    const current = localStorage.getItem('theme') || 'system';
+    const next = THEME_CYCLE[(THEME_CYCLE.indexOf(current) + 1) % THEME_CYCLE.length];
+    localStorage.setItem('theme', next);
+    applyTheme(next);
+    btn.textContent = THEME_ICONS[next];
+  });
+
+  // Listen for system theme changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if ((localStorage.getItem('theme') || 'system') === 'system') {
+      applyTheme('system');
+    }
+  });
+}
+
+initTheme();
+
 // API Layer
 const API = {
   async search(query, limit = 10, tags = null) {
@@ -242,6 +279,22 @@ document.getElementById('import-form').addEventListener('submit', async e => {
     status.className = 'status error';
     status.textContent = 'Error: ' + err.message;
   }
+});
+
+// Open external links in system browser
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[target="_blank"]');
+  if (!a) return;
+  e.preventDefault();
+  // Use server-side open endpoint (works in both browser and Tauri WebView)
+  fetch('/api/open', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: a.href }),
+  }).catch(() => {
+    // Fallback: try window.open
+    window.open(a.href, '_blank');
+  });
 });
 
 // Init

@@ -34,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/search", post(search_bookmarks))
         .route("/api/export", post(export_bookmarks))
         .route("/api/import", post(import_bookmarks))
+        .route("/api/open", post(open_url))
         .fallback(static_handler)
         .layer(cors)
         .with_state(state);
@@ -117,6 +118,18 @@ async fn import_bookmarks(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let count = gm.import_json(std::path::Path::new(&req.path)).await?;
     Ok(Json(serde_json::json!({ "imported": count })))
+}
+
+#[derive(Deserialize)]
+struct OpenRequest {
+    url: String,
+}
+
+async fn open_url(Json(req): Json<OpenRequest>) -> StatusCode {
+    match open::that(&req.url) {
+        Ok(()) => StatusCode::NO_CONTENT,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
 
 // Error handling
