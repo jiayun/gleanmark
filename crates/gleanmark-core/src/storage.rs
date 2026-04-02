@@ -142,7 +142,11 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn list(&self, limit: u32, offset: Option<String>) -> Result<Vec<Bookmark>> {
+    pub async fn list(
+        &self,
+        limit: u32,
+        offset: Option<String>,
+    ) -> Result<(Vec<Bookmark>, Option<String>)> {
         let mut builder = ScrollPointsBuilder::new(&self.collection)
             .limit(limit)
             .with_payload(true);
@@ -154,6 +158,11 @@ impl Storage {
 
         let response = self.client.scroll(builder).await?;
 
+        let next_offset = response
+            .next_page_offset
+            .as_ref()
+            .and_then(point_id_to_string);
+
         let bookmarks = response
             .result
             .iter()
@@ -163,6 +172,6 @@ impl Storage {
             })
             .collect();
 
-        Ok(bookmarks)
+        Ok((bookmarks, next_offset))
     }
 }

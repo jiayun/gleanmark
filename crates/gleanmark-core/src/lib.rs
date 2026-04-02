@@ -83,7 +83,8 @@ impl GleanMark {
     }
 
     pub async fn list(&self, limit: usize, offset: Option<String>) -> Result<Vec<Bookmark>> {
-        self.storage.list(limit as u32, offset).await
+        let (bookmarks, _next) = self.storage.list(limit as u32, offset).await?;
+        Ok(bookmarks)
     }
 
     pub async fn export_json(&self, path: &Path) -> Result<usize> {
@@ -92,12 +93,12 @@ impl GleanMark {
         let mut offset: Option<String> = None;
 
         loop {
-            let batch = self.storage.list(batch_size, offset).await?;
-            if batch.is_empty() {
-                break;
-            }
-            offset = batch.last().map(|b| b.id.clone());
+            let (batch, next_offset) = self.storage.list(batch_size, offset).await?;
             all.extend(batch);
+            match next_offset {
+                Some(next) => offset = Some(next),
+                None => break,
+            }
         }
 
         let count = all.len();
@@ -110,27 +111,29 @@ impl GleanMark {
 
     pub async fn reindex(&self) -> Result<usize> {
         // Collect all bookmarks first to avoid cursor invalidation during upsert
+        println!("Reading all bookmarks from storage...");
         let mut all = Vec::new();
         let batch_size = 100u32;
         let mut offset: Option<String> = None;
 
         loop {
-            let batch = self.storage.list(batch_size, offset).await?;
-            if batch.is_empty() {
-                break;
-            }
-            offset = batch.last().map(|b| b.id.clone());
+            let (batch, next_offset) = self.storage.list(batch_size, offset).await?;
             all.extend(batch);
+            match next_offset {
+                Some(next) => offset = Some(next),
+                None => break,
+            }
         }
 
         let total = all.len();
+        println!("Total: {total} bookmarks to re-embed");
         for (i, bookmark) in all.iter().enumerate() {
             let embed_text = format!("{} {}", bookmark.title, bookmark.content);
             let result = self.embedding.embed_passage(&embed_text).await?;
             self.storage
                 .upsert(bookmark, result.dense, result.sparse)
                 .await?;
-            info!("Re-indexed {}/{total}: {}", i + 1, bookmark.title);
+            println!("  [{}/{}] {}", i + 1, total, bookmark.title);
         }
 
         info!("Re-indexed {total} bookmarks total");
