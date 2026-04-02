@@ -62,6 +62,7 @@ async fn create_bookmark(
 struct ListParams {
     #[serde(default = "default_limit")]
     limit: usize,
+    offset: Option<String>,
 }
 
 fn default_limit() -> usize {
@@ -72,7 +73,7 @@ async fn list_bookmarks(
     State(gm): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<ListParams>,
 ) -> Result<Json<Vec<gleanmark_core::models::Bookmark>>, AppError> {
-    let bookmarks = gm.list(params.limit).await?;
+    let bookmarks = gm.list(params.limit, params.offset).await?;
     Ok(Json(bookmarks))
 }
 

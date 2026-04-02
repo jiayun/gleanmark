@@ -12,8 +12,10 @@ const API = {
     return res.json();
   },
 
-  async listBookmarks(limit = 50) {
-    const res = await fetch(`/api/bookmarks?limit=${limit}`);
+  async listBookmarks(limit = 50, offset = null) {
+    let url = `/api/bookmarks?limit=${limit}`;
+    if (offset) url += `&offset=${encodeURIComponent(offset)}`;
+    const res = await fetch(url);
     if (!res.ok) throw new Error((await res.json()).error || `HTTP ${res.status}`);
     return res.json();
   },
@@ -57,13 +59,11 @@ function switchView(name) {
   if (name === 'bookmarks') loadBookmarks();
 }
 
-// Nav click handlers
+// Nav click handlers — only set hash, let hashchange handle the switch
 document.querySelectorAll('nav a').forEach(a => {
   a.addEventListener('click', e => {
     e.preventDefault();
-    const view = a.dataset.view;
-    window.location.hash = view;
-    switchView(view);
+    window.location.hash = a.dataset.view;
   });
 });
 
@@ -135,35 +135,51 @@ searchForm.addEventListener('submit', async e => {
 });
 
 // Bookmarks View
-let bookmarkLimit = 50;
+const PAGE_SIZE = 50;
+let nextOffset = null;
+let totalLoaded = 0;
 
-async function loadBookmarks() {
+async function loadBookmarks(append = false) {
   const list = document.getElementById('bookmark-list');
   const count = document.getElementById('bookmark-count');
   const loadMore = document.getElementById('load-more');
 
-  list.innerHTML = '<p class="loading">Loading...</p>';
+  if (!append) {
+    list.innerHTML = '<p class="loading">Loading...</p>';
+    nextOffset = null;
+    totalLoaded = 0;
+  }
 
   try {
-    const bookmarks = await API.listBookmarks(bookmarkLimit);
-    count.textContent = `${bookmarks.length} bookmark${bookmarks.length !== 1 ? 's' : ''}`;
+    const bookmarks = await API.listBookmarks(PAGE_SIZE, append ? nextOffset : null);
+    totalLoaded += bookmarks.length;
+    nextOffset = bookmarks.length >= PAGE_SIZE ? bookmarks[bookmarks.length - 1].id : null;
+    count.textContent = `${totalLoaded} bookmark${totalLoaded !== 1 ? 's' : ''}`;
 
-    if (bookmarks.length === 0) {
+    if (totalLoaded === 0) {
       list.innerHTML = '<p class="empty-state">No bookmarks yet.</p>';
       loadMore.classList.add('hidden');
     } else {
-      list.innerHTML = bookmarks
+      const html = bookmarks
         .map(b => renderBookmarkCard(b, { showDelete: true }))
         .join('');
 
-      if (bookmarks.length >= bookmarkLimit) {
+      if (append) {
+        list.insertAdjacentHTML('beforeend', html);
+      } else {
+        list.innerHTML = html;
+      }
+
+      if (nextOffset) {
         loadMore.classList.remove('hidden');
       } else {
         loadMore.classList.add('hidden');
       }
     }
   } catch (err) {
-    list.innerHTML = `<p class="empty-state" style="color:#c5221f">Error: ${escapeHtml(err.message)}</p>`;
+    if (!append) {
+      list.innerHTML = `<p class="empty-state" style="color:#c5221f">Error: ${escapeHtml(err.message)}</p>`;
+    }
   }
 }
 
@@ -185,8 +201,7 @@ document.getElementById('bookmark-list').addEventListener('click', async e => {
 
 // Load more
 document.getElementById('load-more').addEventListener('click', () => {
-  bookmarkLimit += 50;
-  loadBookmarks();
+  loadBookmarks(true);
 });
 
 // Export

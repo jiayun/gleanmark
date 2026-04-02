@@ -82,8 +82,8 @@ impl GleanMark {
             .ok_or_else(|| Error::NotFound(id.to_string()))
     }
 
-    pub async fn list(&self, limit: usize) -> Result<Vec<Bookmark>> {
-        self.storage.list(limit as u32, None).await
+    pub async fn list(&self, limit: usize, offset: Option<String>) -> Result<Vec<Bookmark>> {
+        self.storage.list(limit as u32, offset).await
     }
 
     pub async fn export_json(&self, path: &Path) -> Result<usize> {

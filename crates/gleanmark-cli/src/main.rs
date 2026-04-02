@@ -126,7 +126,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::List { limit } => {
-            let bookmarks = gm.list(limit).await?;
+            let bookmarks = gm.list(limit, None).await?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&bookmarks)?);
             } else if bookmarks.is_empty() {
@@ -214,7 +214,7 @@ async fn serve(port: u16) -> anyhow::Result<()> {
                 move |Query(params): Query<ListParams>| {
                     let gm = Arc::clone(&gm);
                     async move {
-                        match gm.list(params.limit).await {
+                        match gm.list(params.limit, params.offset.clone()).await {
                             Ok(b) => Json(serde_json::to_value(b).unwrap()).into_response(),
                             Err(e) => (
                                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -321,6 +321,7 @@ async fn serve(port: u16) -> anyhow::Result<()> {
 struct ListParams {
     #[serde(default = "default_limit")]
     limit: usize,
+    offset: Option<String>,
 }
 
 fn default_limit() -> usize {
