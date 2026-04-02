@@ -64,6 +64,8 @@ enum Commands {
         /// Input file path
         path: PathBuf,
     },
+    /// Re-embed all bookmarks with current models
+    Reindex,
     /// Start the HTTP API server
     Serve {
         /// Port to listen on
@@ -151,6 +153,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::Import { path } => {
             let count = gm.import_json(&path).await?;
             println!("Imported {count} bookmarks from {}", path.display());
+        }
+
+        Commands::Reindex => {
+            println!("Re-indexing all bookmarks with current embedding models...");
+            let count = gm.reindex().await?;
+            println!("Done. Re-indexed {count} bookmarks.");
         }
 
         Commands::Serve { port } => {

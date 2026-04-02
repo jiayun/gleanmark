@@ -17,3 +17,4 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
 anyhow = "1"
+opencc-jieba-rs = "0.7"

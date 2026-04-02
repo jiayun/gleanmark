@@ -51,7 +51,7 @@ impl GleanMark {
         };
 
         let embed_text = format!("{} {}", input.title, input.content);
-        let result = self.embedding.embed(&embed_text).await?;
+        let result = self.embedding.embed_passage(&embed_text).await?;
 
         self.storage
             .upsert(&bookmark, result.dense, result.sparse)
@@ -63,7 +63,7 @@ impl GleanMark {
 
     pub async fn search(&self, query: SearchQuery) -> Result<Vec<SearchResult>> {
         let limit = query.limit.unwrap_or(10) as u64;
-        let result = self.embedding.embed(&query.query).await?;
+        let result = self.embedding.embed_query(&query.query).await?;
 
         let tag_filter = query.tags.as_deref();
         search::hybrid_search(&self.storage, &result, limit, tag_filter).await
@@ -108,6 +108,33 @@ impl GleanMark {
         Ok(count)
     }
 
+    pub async fn reindex(&self) -> Result<usize> {
+        let batch_size = 100u32;
+        let mut offset: Option<String> = None;
+        let mut count = 0usize;
+
+        loop {
+            let batch = self.storage.list(batch_size, offset).await?;
+            if batch.is_empty() {
+                break;
+            }
+            offset = batch.last().map(|b| b.id.clone());
+
+            for bookmark in &batch {
+                let embed_text = format!("{} {}", bookmark.title, bookmark.content);
+                let result = self.embedding.embed_passage(&embed_text).await?;
+                self.storage
+                    .upsert(bookmark, result.dense, result.sparse)
+                    .await?;
+                count += 1;
+            }
+            info!("Re-indexed {count} bookmarks so far...");
+        }
+
+        info!("Re-indexed {count} bookmarks total");
+        Ok(count)
+    }
+
     pub async fn import_json(&self, path: &Path) -> Result<usize> {
         let data = std::fs::read_to_string(path)?;
         let bookmarks: Vec<Bookmark> = serde_json::from_str(&data)?;
@@ -115,7 +142,7 @@ impl GleanMark {
 
         for bookmark in &bookmarks {
             let embed_text = format!("{} {}", bookmark.title, bookmark.content);
-            let result = self.embedding.embed(&embed_text).await?;
+            let result = self.embedding.embed_passage(&embed_text).await?;
             self.storage
                 .upsert(bookmark, result.dense, result.sparse)
                 .await?;
