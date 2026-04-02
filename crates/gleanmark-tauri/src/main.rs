@@ -4,6 +4,7 @@ mod tray;
 
 use std::sync::Arc;
 
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::Manager;
 
 fn main() {
@@ -15,6 +16,58 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // Build app menu bar
+            let about = PredefinedMenuItem::about(app, Some("About GleanMark"), None)?;
+            let check_update = MenuItem::with_id(app, "check_update", "Check for Updates...", true, None::<&str>)?;
+            let separator = PredefinedMenuItem::separator(app)?;
+            let hide = PredefinedMenuItem::hide(app, None)?;
+            let hide_others = PredefinedMenuItem::hide_others(app, None)?;
+            let show_all = PredefinedMenuItem::show_all(app, None)?;
+            let separator2 = PredefinedMenuItem::separator(app)?;
+            let quit = PredefinedMenuItem::quit(app, None)?;
+
+            let app_menu = Submenu::with_items(
+                app,
+                "GleanMark",
+                true,
+                &[&about, &check_update, &separator, &hide, &hide_others, &show_all, &separator2, &quit],
+            )?;
+
+            let edit_menu = Submenu::with_items(
+                app,
+                "Edit",
+                true,
+                &[
+                    &PredefinedMenuItem::undo(app, None)?,
+                    &PredefinedMenuItem::redo(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::cut(app, None)?,
+                    &PredefinedMenuItem::copy(app, None)?,
+                    &PredefinedMenuItem::paste(app, None)?,
+                    &PredefinedMenuItem::select_all(app, None)?,
+                ],
+            )?;
+
+            let window_menu = Submenu::with_items(
+                app,
+                "Window",
+                true,
+                &[
+                    &PredefinedMenuItem::minimize(app, None)?,
+                    &PredefinedMenuItem::maximize(app, None)?,
+                    &PredefinedMenuItem::close_window(app, None)?,
+                ],
+            )?;
+
+            let menu = Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu])?;
+            app.set_menu(menu)?;
+
+            app.on_menu_event(move |app, event| {
+                if event.id.as_ref() == "check_update" {
+                    tray::check_for_updates(app);
+                }
+            });
 
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = start_app(&handle).await {
