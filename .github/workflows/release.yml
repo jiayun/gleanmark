@@ -21,11 +21,6 @@ jobs:
             target: 'aarch64-apple-darwin'
             qdrant_asset: 'qdrant-aarch64-apple-darwin.tar.gz'
             qdrant_bin: 'qdrant'
-          - platform: 'macos-latest'
-            args: '--target x86_64-apple-darwin'
-            target: 'x86_64-apple-darwin'
-            qdrant_asset: 'qdrant-x86_64-apple-darwin.tar.gz'
-            qdrant_bin: 'qdrant'
           - platform: 'ubuntu-22.04'
             args: ''
             target: 'x86_64-unknown-linux-gnu'
@@ -135,17 +130,6 @@ jobs:
             mv "$AARCH64_SIG" "$DIR/GleanMark_${VERSION}_aarch64.app.tar.gz.sig"
           fi
 
-          # Rename x86_64 .app.tar.gz files
-          X64_TAR=$(find artifacts -name "*.app.tar.gz" -path "*x86_64*" | head -1)
-          if [ -f "$X64_TAR" ]; then
-            DIR=$(dirname "$X64_TAR")
-            mv "$X64_TAR" "$DIR/GleanMark_${VERSION}_x64.app.tar.gz"
-          fi
-          X64_SIG=$(find artifacts -name "*.app.tar.gz.sig" -path "*x86_64*" | head -1)
-          if [ -f "$X64_SIG" ]; then
-            DIR=$(dirname "$X64_SIG")
-            mv "$X64_SIG" "$DIR/GleanMark_${VERSION}_x64.app.tar.gz.sig"
-          fi
 
       - name: Generate latest.json for updater
         run: |
@@ -154,17 +138,14 @@ jobs:
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
           MAC_ARM_SIG=$(find artifacts -name "*_aarch64.app.tar.gz.sig" | head -1)
-          MAC_X64_SIG=$(find artifacts -name "*_x64.app.tar.gz.sig" | head -1)
           WINDOWS_SIG=$(find artifacts -name "*.msi.sig" | head -1)
           LINUX_SIG=$(find artifacts -name "*.AppImage.sig" | head -1)
 
           MAC_ARM_SIGNATURE=""
-          MAC_X64_SIGNATURE=""
           WINDOWS_SIGNATURE=""
           LINUX_SIGNATURE=""
 
           if [ -f "$MAC_ARM_SIG" ]; then MAC_ARM_SIGNATURE=$(cat "$MAC_ARM_SIG"); fi
-          if [ -f "$MAC_X64_SIG" ]; then MAC_X64_SIGNATURE=$(cat "$MAC_X64_SIG"); fi
           if [ -f "$WINDOWS_SIG" ]; then WINDOWS_SIGNATURE=$(cat "$WINDOWS_SIG"); fi
           if [ -f "$LINUX_SIG" ]; then LINUX_SIGNATURE=$(cat "$LINUX_SIG"); fi
 
@@ -177,10 +158,6 @@ jobs:
               "darwin-aarch64": {
                 "signature": "${MAC_ARM_SIGNATURE}",
                 "url": "https://github.com/${REPO}/releases/download/v${VERSION}/GleanMark_${VERSION}_aarch64.app.tar.gz"
-              },
-              "darwin-x86_64": {
-                "signature": "${MAC_X64_SIGNATURE}",
-                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/GleanMark_${VERSION}_x64.app.tar.gz"
               },
               "windows-x86_64": {
                 "signature": "${WINDOWS_SIGNATURE}",
