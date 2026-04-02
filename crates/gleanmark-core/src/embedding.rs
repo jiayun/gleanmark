@@ -44,7 +44,7 @@ impl EmbeddingService {
         )?;
 
         let sparse = SparseTextEmbedding::try_new(
-            SparseInitOptions::new(SparseModel::BGEM3).with_show_download_progress(true),
+            SparseInitOptions::new(SparseModel::SPLADEPPV1).with_show_download_progress(true),
         )?;
 
         Ok(Self {

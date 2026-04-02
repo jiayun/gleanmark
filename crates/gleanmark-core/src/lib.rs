@@ -109,9 +109,10 @@ impl GleanMark {
     }
 
     pub async fn reindex(&self) -> Result<usize> {
+        // Collect all bookmarks first to avoid cursor invalidation during upsert
+        let mut all = Vec::new();
         let batch_size = 100u32;
         let mut offset: Option<String> = None;
-        let mut count = 0usize;
 
         loop {
             let batch = self.storage.list(batch_size, offset).await?;
@@ -119,20 +120,21 @@ impl GleanMark {
                 break;
             }
             offset = batch.last().map(|b| b.id.clone());
-
-            for bookmark in &batch {
-                let embed_text = format!("{} {}", bookmark.title, bookmark.content);
-                let result = self.embedding.embed_passage(&embed_text).await?;
-                self.storage
-                    .upsert(bookmark, result.dense, result.sparse)
-                    .await?;
-                count += 1;
-            }
-            info!("Re-indexed {count} bookmarks so far...");
+            all.extend(batch);
         }
 
-        info!("Re-indexed {count} bookmarks total");
-        Ok(count)
+        let total = all.len();
+        for (i, bookmark) in all.iter().enumerate() {
+            let embed_text = format!("{} {}", bookmark.title, bookmark.content);
+            let result = self.embedding.embed_passage(&embed_text).await?;
+            self.storage
+                .upsert(bookmark, result.dense, result.sparse)
+                .await?;
+            info!("Re-indexed {}/{total}: {}", i + 1, bookmark.title);
+        }
+
+        info!("Re-indexed {total} bookmarks total");
+        Ok(total)
     }
 
     pub async fn import_json(&self, path: &Path) -> Result<usize> {
