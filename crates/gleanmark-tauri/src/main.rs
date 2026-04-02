@@ -12,6 +12,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -97,7 +98,9 @@ fn update_splash(handle: &tauri::AppHandle, msg: &str) {
 fn prepare_sidecar() {
     let Some(data_dir) = dirs::data_local_dir() else { return };
     let bin_dir = data_dir.join("gleanmark").join("bin");
-    let target = bin_dir.join("qdrant");
+
+    let qdrant_name = if cfg!(windows) { "qdrant.exe" } else { "qdrant" };
+    let target = bin_dir.join(qdrant_name);
 
     if target.exists() {
         return;
@@ -106,10 +109,8 @@ fn prepare_sidecar() {
     let Ok(exe) = std::env::current_exe() else { return };
     let Some(exe_dir) = exe.parent() else { return };
 
-    let sidecar = exe_dir.join(format!(
-        "qdrant-{}-apple-darwin",
-        std::env::consts::ARCH
-    ));
+    let sidecar_name = sidecar_binary_name();
+    let sidecar = exe_dir.join(&sidecar_name);
 
     if sidecar.exists() {
         let _ = std::fs::create_dir_all(&bin_dir);
@@ -117,6 +118,21 @@ fn prepare_sidecar() {
         {
             let _ = std::os::unix::fs::symlink(&sidecar, &target);
         }
+        #[cfg(windows)]
+        {
+            let _ = std::fs::copy(&sidecar, &target);
+        }
+    }
+}
+
+fn sidecar_binary_name() -> String {
+    let arch = std::env::consts::ARCH;
+    let os = std::env::consts::OS;
+    match os {
+        "macos" => format!("qdrant-{arch}-apple-darwin"),
+        "linux" => format!("qdrant-{arch}-unknown-linux-gnu"),
+        "windows" => format!("qdrant-{arch}-pc-windows-msvc.exe"),
+        _ => format!("qdrant-{arch}-unknown"),
     }
 }
 

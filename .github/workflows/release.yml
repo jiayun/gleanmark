@@ -1,0 +1,242 @@
+name: 'Build and Release'
+
+on:
+  push:
+    tags: ['v*']
+
+env:
+  CARGO_TERM_COLOR: always
+  QDRANT_VERSION: 'v1.14.0'
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin'
+            target: 'aarch64-apple-darwin'
+            qdrant_asset: 'qdrant-aarch64-apple-darwin.tar.gz'
+            qdrant_bin: 'qdrant'
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+            target: 'x86_64-apple-darwin'
+            qdrant_asset: 'qdrant-x86_64-apple-darwin.tar.gz'
+            qdrant_bin: 'qdrant'
+          - platform: 'ubuntu-22.04'
+            args: ''
+            target: 'x86_64-unknown-linux-gnu'
+            qdrant_asset: 'qdrant-x86_64-unknown-linux-gnu.tar.gz'
+            qdrant_bin: 'qdrant'
+          - platform: 'windows-latest'
+            args: ''
+            target: 'x86_64-pc-windows-msvc'
+            qdrant_asset: 'qdrant-x86_64-pc-windows-msvc.zip'
+            qdrant_bin: 'qdrant.exe'
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Rust setup
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Download Qdrant sidecar binary
+        shell: bash
+        run: |
+          cd crates/gleanmark-tauri/binaries
+          ASSET="${{ matrix.qdrant_asset }}"
+          URL="https://github.com/qdrant/qdrant/releases/download/${{ env.QDRANT_VERSION }}/${ASSET}"
+          echo "Downloading Qdrant from ${URL}"
+          curl -sL "${URL}" -o "${ASSET}"
+          if [[ "${ASSET}" == *.zip ]]; then
+            unzip -o "${ASSET}"
+          else
+            tar xzf "${ASSET}"
+          fi
+          # Rename to Tauri sidecar convention: binary-target_triple
+          mv "${{ matrix.qdrant_bin }}" "qdrant-${{ matrix.target }}${{ matrix.target == 'x86_64-pc-windows-msvc' && '.exe' || '' }}"
+          ls -la
+          rm -f "${ASSET}"
+
+      - name: Build the app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        with:
+          projectPath: crates/gleanmark-tauri
+          args: ${{ matrix.args }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.platform }}-${{ matrix.target }}
+          path: |
+            target/release/bundle/*/*
+            target/*/release/bundle/*/*
+            target/release/bundle/**/*.sig
+            target/*/release/bundle/**/*.sig
+          if-no-files-found: ignore
+
+  release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Debug artifacts structure
+        run: find artifacts -type f \( -name "*.dmg" -o -name "*.deb" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.exe" -o -name "*.sig" -o -name "*.tar.gz" \) | head -30
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Rename updater artifacts to include architecture
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+
+          # Rename aarch64 .app.tar.gz files
+          AARCH64_TAR=$(find artifacts -name "*.app.tar.gz" -path "*aarch64*" | head -1)
+          if [ -f "$AARCH64_TAR" ]; then
+            DIR=$(dirname "$AARCH64_TAR")
+            mv "$AARCH64_TAR" "$DIR/GleanMark_${VERSION}_aarch64.app.tar.gz"
+          fi
+          AARCH64_SIG=$(find artifacts -name "*.app.tar.gz.sig" -path "*aarch64*" | head -1)
+          if [ -f "$AARCH64_SIG" ]; then
+            DIR=$(dirname "$AARCH64_SIG")
+            mv "$AARCH64_SIG" "$DIR/GleanMark_${VERSION}_aarch64.app.tar.gz.sig"
+          fi
+
+          # Rename x86_64 .app.tar.gz files
+          X64_TAR=$(find artifacts -name "*.app.tar.gz" -path "*x86_64*" | head -1)
+          if [ -f "$X64_TAR" ]; then
+            DIR=$(dirname "$X64_TAR")
+            mv "$X64_TAR" "$DIR/GleanMark_${VERSION}_x64.app.tar.gz"
+          fi
+          X64_SIG=$(find artifacts -name "*.app.tar.gz.sig" -path "*x86_64*" | head -1)
+          if [ -f "$X64_SIG" ]; then
+            DIR=$(dirname "$X64_SIG")
+            mv "$X64_SIG" "$DIR/GleanMark_${VERSION}_x64.app.tar.gz.sig"
+          fi
+
+      - name: Generate latest.json for updater
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          REPO="${{ github.repository }}"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          MAC_ARM_SIG=$(find artifacts -name "*_aarch64.app.tar.gz.sig" | head -1)
+          MAC_X64_SIG=$(find artifacts -name "*_x64.app.tar.gz.sig" | head -1)
+          WINDOWS_SIG=$(find artifacts -name "*.msi.sig" | head -1)
+          LINUX_SIG=$(find artifacts -name "*.AppImage.sig" | head -1)
+
+          MAC_ARM_SIGNATURE=""
+          MAC_X64_SIGNATURE=""
+          WINDOWS_SIGNATURE=""
+          LINUX_SIGNATURE=""
+
+          if [ -f "$MAC_ARM_SIG" ]; then MAC_ARM_SIGNATURE=$(cat "$MAC_ARM_SIG"); fi
+          if [ -f "$MAC_X64_SIG" ]; then MAC_X64_SIGNATURE=$(cat "$MAC_X64_SIG"); fi
+          if [ -f "$WINDOWS_SIG" ]; then WINDOWS_SIGNATURE=$(cat "$WINDOWS_SIG"); fi
+          if [ -f "$LINUX_SIG" ]; then LINUX_SIGNATURE=$(cat "$LINUX_SIG"); fi
+
+          cat > latest.json << EOF
+          {
+            "version": "${VERSION}",
+            "notes": "See the full changelog at https://github.com/${REPO}/blob/main/CHANGELOG.md",
+            "pub_date": "${DATE}",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "${MAC_ARM_SIGNATURE}",
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/GleanMark_${VERSION}_aarch64.app.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "${MAC_X64_SIGNATURE}",
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/GleanMark_${VERSION}_x64.app.tar.gz"
+              },
+              "windows-x86_64": {
+                "signature": "${WINDOWS_SIGNATURE}",
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/GleanMark_${VERSION}_x64-setup.msi"
+              },
+              "linux-x86_64": {
+                "signature": "${LINUX_SIGNATURE}",
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/GleanMark_${VERSION}_amd64.AppImage"
+              }
+            }
+          }
+          EOF
+
+          echo "Generated latest.json:"
+          cat latest.json
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            latest.json
+            artifacts/**/bundle/**/*.dmg
+            artifacts/**/bundle/**/*.deb
+            artifacts/**/bundle/**/*.AppImage
+            artifacts/**/bundle/**/*.msi
+            artifacts/**/*.exe
+            artifacts/**/bundle/**/*.tar.gz
+            artifacts/**/bundle/**/*.tar.gz.sig
+          body: |
+            ## Downloads
+
+            - **macOS**: Download the `.dmg` file
+            - **Windows**: Download the `.msi` file
+            - **Linux**: Download the `.deb` or `.AppImage` file
+
+            ## Installation
+
+            ### macOS
+            1. Download `GleanMark_x.x.x_aarch64.dmg` (Apple Silicon) or `GleanMark_x.x.x_x64.dmg` (Intel)
+            2. Open the DMG and drag GleanMark to Applications
+            3. If you see a security warning:
+               ```bash
+               xattr -cr /Applications/GleanMark.app
+               ```
+
+            ### Windows
+            1. Download `GleanMark_x.x.x_x64-setup.msi`
+            2. Run the installer
+
+            ### Linux
+            ```bash
+            # Debian/Ubuntu
+            sudo dpkg -i GleanMark_x.x.x_amd64.deb
+
+            # Other distributions
+            chmod +x GleanMark_x.x.x_amd64.AppImage
+            ./GleanMark_x.x.x_amd64.AppImage
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -41,7 +41,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "app"],
+    "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/icon.png",
       "icons/icon.icns"
@@ -53,6 +54,13 @@
       "minimumSystemVersion": "12.0"
     }
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMzMjI0NUI2QTQ2Q0M0MzAKUldRd3hHeWt0a1VpTXlOdHY3Y1B6LzhvNUZkbFpTZldpNHBONHN6K3l5SG42OHpTTlNCc1pNRXEK",
+      "endpoints": [
+        "https://github.com/jiayun/gleanmark/releases/latest/download/latest.json"
+      ]
+    }
+  }
 
 }
