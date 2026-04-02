@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "GleanMark",
   "version": "0.1.0",
-  "description": "Save web pages to your local GleanMark knowledge base for semantic search. Captures page content for finding articles by meaning, not just keywords. Requires the GleanMark app running locally.",
+  "description": "Save web pages to your GleanMark knowledge base. Find articles later by meaning, not just keywords.",
   "permissions": [
     "activeTab",
     "scripting",
