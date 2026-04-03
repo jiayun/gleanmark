@@ -18,3 +18,6 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
 anyhow = "1"
 opencc-jieba-rs = "0.7"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"

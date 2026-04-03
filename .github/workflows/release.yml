@@ -187,6 +187,8 @@ jobs:
             artifacts/**/bundle/**/*.tar.gz
             artifacts/**/bundle/**/*.tar.gz.sig
           body: |
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new in this release.
+
             ## Downloads
 
             - **macOS**: Download the `.dmg` file
@@ -196,7 +198,7 @@ jobs:
             ## Installation
 
             ### macOS
-            1. Download `GleanMark_x.x.x_aarch64.dmg` (Apple Silicon) or `GleanMark_x.x.x_x64.dmg` (Intel)
+            1. Download `GleanMark_x.x.x_aarch64.dmg` (Apple Silicon)
             2. Open the DMG and drag GleanMark to Applications
             3. If you see a security warning:
                ```bash

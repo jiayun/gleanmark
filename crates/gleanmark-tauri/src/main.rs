@@ -155,26 +155,58 @@ fn prepare_sidecar() {
     let qdrant_name = if cfg!(windows) { "qdrant.exe" } else { "qdrant" };
     let target = bin_dir.join(qdrant_name);
 
+    // Check if target exists and is a valid file/symlink (not a broken symlink)
     if target.exists() {
+        // Remove quarantine on existing binary (macOS updates can re-trigger Gatekeeper)
+        #[cfg(target_os = "macos")]
+        remove_quarantine(&target);
         return;
+    }
+
+    // Remove broken symlink if present
+    if target.symlink_metadata().is_ok() {
+        let _ = std::fs::remove_file(&target);
     }
 
     let Ok(exe) = std::env::current_exe() else { return };
     let Some(exe_dir) = exe.parent() else { return };
 
-    let sidecar_name = sidecar_binary_name();
-    let sidecar = exe_dir.join(&sidecar_name);
+    // Try with target triple first (dev builds), then without (bundled app)
+    let candidates = [
+        exe_dir.join(sidecar_binary_name()),
+        exe_dir.join(qdrant_name),
+    ];
+    let Some(sidecar) = candidates.iter().find(|p| p.exists()) else { return };
 
-    if sidecar.exists() {
-        let _ = std::fs::create_dir_all(&bin_dir);
-        #[cfg(unix)]
-        {
-            let _ = std::os::unix::fs::symlink(&sidecar, &target);
-        }
-        #[cfg(windows)]
-        {
-            let _ = std::fs::copy(&sidecar, &target);
-        }
+    let _ = std::fs::create_dir_all(&bin_dir);
+    #[cfg(unix)]
+    {
+        let _ = std::os::unix::fs::symlink(sidecar, &target);
+    }
+    #[cfg(windows)]
+    {
+        let _ = std::fs::copy(sidecar, &target);
+    }
+
+    #[cfg(target_os = "macos")]
+    remove_quarantine(&target);
+}
+
+/// Remove com.apple.quarantine xattr to prevent Gatekeeper blocks after macOS updates.
+/// Uses the removexattr syscall directly instead of shelling out to `xattr`.
+#[cfg(target_os = "macos")]
+fn remove_quarantine(path: &std::path::Path) {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    // Resolve symlink to the actual file
+    let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let Ok(c_path) = CString::new(real.as_os_str().as_bytes()) else { return };
+    let Ok(c_attr) = CString::new("com.apple.quarantine") else { return };
+
+    // SAFETY: valid null-terminated C strings, removexattr is safe to call on any path
+    unsafe {
+        libc::removexattr(c_path.as_ptr(), c_attr.as_ptr(), 0);
     }
 }
 

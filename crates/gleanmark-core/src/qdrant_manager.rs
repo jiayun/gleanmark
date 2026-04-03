@@ -29,6 +29,19 @@ impl QdrantManager {
         let binary = Self::find_binary(config)?;
         info!("Starting Qdrant from {}", binary.display());
 
+        // Remove macOS quarantine attribute to prevent Gatekeeper blocks
+        #[cfg(target_os = "macos")]
+        {
+            use std::ffi::CString;
+            use std::os::unix::ffi::OsStrExt;
+            let real = std::fs::canonicalize(&binary).unwrap_or_else(|_| binary.clone());
+            if let Ok(c_path) = CString::new(real.as_os_str().as_bytes()) {
+                if let Ok(c_attr) = CString::new("com.apple.quarantine") {
+                    unsafe { libc::removexattr(c_path.as_ptr(), c_attr.as_ptr(), 0); }
+                }
+            }
+        }
+
         let storage_path = config.data_dir.join("qdrant_storage");
         std::fs::create_dir_all(&storage_path)?;
 
