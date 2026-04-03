@@ -8,6 +8,7 @@ All notable changes to GleanMark will be documented in this file.
 
 - Fix app crash when launched from Finder/Dock: app bundle was missing `_CodeSignature` directory because bundle-level code signing was never performed. Now uses ad-hoc signing (`signingIdentity: "-"`) so macOS Gatekeeper accepts the bundle without an Apple Developer certificate.
 - Fix app crash when global shortcut registration fails (e.g. Accessibility permission reset after macOS update). The shortcut failure is now a warning instead of a fatal error.
+- Fix app crash due to Qdrant client/server version mismatch: bundled Qdrant server was v1.14.0 but qdrant-client requires v1.16+. Updated bundled Qdrant to v1.17.0.
 
 ### Improved
 
