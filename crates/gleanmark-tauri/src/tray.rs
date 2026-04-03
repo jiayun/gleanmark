@@ -1,6 +1,7 @@
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_updater::UpdaterExt;
 
@@ -54,52 +55,161 @@ pub fn check_for_updates(app: &AppHandle) {
         let updater = match handle.updater() {
             Ok(u) => u,
             Err(e) => {
-                eprintln!("Updater not available: {e}");
-                show_update_result(&handle, &format!("Updater error: {e}"));
+                show_error(&handle, &format!("Updater error: {e}"));
                 return;
             }
         };
 
-        match updater.check().await {
-            Ok(Some(update)) => {
-                let version = update.version.clone();
-                show_update_result(
-                    &handle,
-                    &format!("Version {} available! Downloading...", version),
-                );
-                let mut downloaded = 0;
-                if let Err(e) = update
-                    .download_and_install(
-                        |chunk, _total| {
-                            downloaded += chunk;
-                            eprintln!("Downloaded {} bytes", downloaded);
-                        },
-                        || {
-                            eprintln!("Download complete, installing...");
-                        },
-                    )
-                    .await
-                {
-                    show_update_result(&handle, &format!("Update failed: {e}"));
-                } else {
-                    show_update_result(&handle, "Update installed! Restart to apply.");
-                }
-            }
+        let update = match updater.check().await {
+            Ok(Some(update)) => update,
             Ok(None) => {
-                show_update_result(&handle, "You're running the latest version.");
+                handle
+                    .dialog()
+                    .message("You're running the latest version.")
+                    .title("GleanMark")
+                    .kind(MessageDialogKind::Info)
+                    .blocking_show();
+                return;
             }
             Err(e) => {
-                show_update_result(&handle, &format!("Check failed: {e}"));
+                show_error(&handle, &format!("Check failed: {e}"));
+                return;
+            }
+        };
+
+        // Ask user to confirm update
+        let version = update.version.clone();
+        let confirmed = handle
+            .dialog()
+            .message(format!("Version {version} is available. Download and install?"))
+            .title("GleanMark Update")
+            .kind(MessageDialogKind::Info)
+            .buttons(MessageDialogButtons::OkCancelCustom("Update".into(), "Later".into()))
+            .blocking_show();
+
+        if !confirmed {
+            return;
+        }
+
+        // Show progress overlay in webview
+        show_progress(&handle, 0, "Starting download...");
+
+        let mut downloaded: u64 = 0;
+        let handle_for_progress = handle.clone();
+
+        let result = update
+            .download_and_install(
+                |chunk_length, content_length| {
+                    downloaded += chunk_length as u64;
+                    let percent = content_length
+                        .map(|total| ((downloaded as f64 / total as f64) * 100.0) as u32)
+                        .unwrap_or(0);
+                    let size_text = format_size(downloaded, content_length);
+                    show_progress(&handle_for_progress, percent, &size_text);
+                },
+                || {
+                    show_progress(&handle_for_progress, 100, "Installing...");
+                },
+            )
+            .await;
+
+        // Remove progress overlay
+        hide_progress(&handle);
+
+        match result {
+            Ok(()) => {
+                let restart = handle
+                    .dialog()
+                    .message("Update installed successfully. Restart now?")
+                    .title("GleanMark Update")
+                    .kind(MessageDialogKind::Info)
+                    .buttons(MessageDialogButtons::OkCancelCustom(
+                        "Restart".into(),
+                        "Later".into(),
+                    ))
+                    .blocking_show();
+
+                if restart {
+                    handle.restart();
+                }
+            }
+            Err(e) => {
+                show_error(&handle, &format!("Update failed: {e}"));
             }
         }
     });
 }
 
-fn show_update_result(handle: &AppHandle, message: &str) {
-    if let Some(win) = handle.get_webview_window("main") {
-        let _ = win.show();
-        let _ = win.set_focus();
-        let js = format!("alert('{}')", message.replace('\'', "\\'"));
-        let _ = win.eval(&js);
+fn show_error(handle: &AppHandle, message: &str) {
+    handle
+        .dialog()
+        .message(message)
+        .title("GleanMark")
+        .kind(MessageDialogKind::Error)
+        .blocking_show();
+}
+
+fn show_progress(handle: &AppHandle, percent: u32, text: &str) {
+    let Some(win) = handle.get_webview_window("main") else { return };
+    let _ = win.show();
+
+    let js = format!(
+        r#"(function() {{
+  let overlay = document.getElementById('gm-update-overlay');
+  if (!overlay) {{
+    overlay = document.createElement('div');
+    overlay.id = 'gm-update-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:var(--bg-secondary,#f0f0f0);padding:12px 20px;display:flex;align-items:center;gap:12px;font-family:system-ui;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.15)';
+    const label = document.createElement('span');
+    label.id = 'gm-update-label';
+    label.style.cssText = 'white-space:nowrap';
+    const barBg = document.createElement('div');
+    barBg.style.cssText = 'flex:1;height:6px;background:var(--border-color,#ddd);border-radius:3px;overflow:hidden';
+    const bar = document.createElement('div');
+    bar.id = 'gm-update-bar';
+    bar.style.cssText = 'height:100%;background:#3b82f6;border-radius:3px;transition:width 0.3s ease';
+    barBg.appendChild(bar);
+    const pct = document.createElement('span');
+    pct.id = 'gm-update-pct';
+    pct.style.cssText = 'min-width:40px;text-align:right;font-variant-numeric:tabular-nums';
+    overlay.appendChild(label);
+    overlay.appendChild(barBg);
+    overlay.appendChild(pct);
+    document.body.prepend(overlay);
+  }}
+  document.getElementById('gm-update-bar').style.width = '{percent}%';
+  document.getElementById('gm-update-pct').textContent = '{percent}%';
+  document.getElementById('gm-update-label').textContent = '{text}';
+}})();"#,
+        percent = percent,
+        text = text.replace('\'', "\\'"),
+    );
+    let _ = win.eval(&js);
+}
+
+fn hide_progress(handle: &AppHandle) {
+    let Some(win) = handle.get_webview_window("main") else { return };
+    let js = r#"(function() {
+  const el = document.getElementById('gm-update-overlay');
+  if (el) el.remove();
+})();"#;
+    let _ = win.eval(js);
+}
+
+fn format_size(downloaded: u64, total: Option<u64>) -> String {
+    let dl = format_bytes(downloaded);
+    match total {
+        Some(t) => format!("{dl} / {}", format_bytes(t)),
+        None => dl,
+    }
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     }
 }
