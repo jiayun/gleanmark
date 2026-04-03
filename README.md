@@ -63,10 +63,12 @@ gleanmark serve
 
 ### Browser Extension
 
-1. Open Chrome → `chrome://extensions/` → Enable Developer Mode
-2. Click "Load unpacked" → select the `extension/` folder
-3. Start the server: `gleanmark serve` (or use the Desktop App)
-4. Click the GleanMark icon on any page to save it
+Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/gleanmark/cfjgpigaopnacbmgnljfjlafjpfogble), then:
+
+1. Start the server: `gleanmark serve` (or use the Desktop App)
+2. Click the GleanMark icon on any page to save it
+
+> **Developers**: You can also load the `extension/` folder as an unpacked extension via `chrome://extensions/`.
 
 ### MCP Server (AI Agents)
 
