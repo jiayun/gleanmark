@@ -116,8 +116,9 @@ async fn start_app(handle: &tauri::AppHandle) -> anyhow::Result<()> {
 
     // Setup tray and global shortcut
     tray::create_tray(handle)?;
-    tray::register_global_shortcut(handle)
-        .map_err(|e| anyhow::anyhow!("Failed to register shortcut: {e}"))?;
+    if let Err(e) = tray::register_global_shortcut(handle) {
+        tracing::warn!("Global shortcut unavailable (grant Accessibility permission): {e}");
+    }
 
     // Transition: close splash, navigate main window, then show it
     if let Some(main_win) = handle.get_webview_window("main") {

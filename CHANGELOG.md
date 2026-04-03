@@ -7,6 +7,7 @@ All notable changes to GleanMark will be documented in this file.
 ### Fixed
 
 - Fix app crash when launched from Finder/Dock: app bundle was missing `_CodeSignature` directory because bundle-level code signing was never performed. Now uses ad-hoc signing (`signingIdentity: "-"`) so macOS Gatekeeper accepts the bundle without an Apple Developer certificate.
+- Fix app crash when global shortcut registration fails (e.g. Accessibility permission reset after macOS update). The shortcut failure is now a warning instead of a fatal error.
 
 ### Improved
 
