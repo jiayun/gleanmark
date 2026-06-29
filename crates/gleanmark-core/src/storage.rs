@@ -28,8 +28,12 @@ fn point_id_to_string(id: &qdrant_client::qdrant::PointId) -> Option<String> {
 }
 
 impl Storage {
-    pub async fn new(url: &str, collection: &str) -> Result<Self> {
-        let client = Qdrant::from_url(url).build()?;
+    pub async fn new(url: &str, collection: &str, api_key: Option<&str>) -> Result<Self> {
+        let mut builder = Qdrant::from_url(url);
+        if let Some(key) = api_key {
+            builder = builder.api_key(key.to_string());
+        }
+        let client = builder.build()?;
 
         let storage = Self {
             client,

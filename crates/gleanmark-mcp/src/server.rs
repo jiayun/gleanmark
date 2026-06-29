@@ -28,7 +28,7 @@ impl GleanMarkMcp {
     async fn gm(&self) -> Result<&GleanMark, String> {
         self.gm
             .get_or_try_init(|| async {
-                let mut config = Config::default();
+                let mut config = Config::load();
                 config.show_download_progress = false;
                 GleanMark::new(config)
                     .await

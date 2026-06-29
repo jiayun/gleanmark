@@ -1,32 +1,45 @@
-use std::sync::{Arc, LazyLock, Mutex};
+//! Embedding result types are always available so the cloud gateway (built with
+//! `--no-default-features`) can construct and inspect them. The fastembed-backed
+//! `EmbeddingService` is gated behind the `embed` feature.
 
-use fastembed::{
-    EmbeddingModel, InitOptions, SparseInitOptions, SparseModel, SparseTextEmbedding,
-    TextEmbedding,
-};
-use opencc_jieba_rs::OpenCC;
-
-use crate::error::Result;
-
-static OPENCC: LazyLock<OpenCC> = LazyLock::new(OpenCC::new);
-
-pub struct EmbeddingService {
-    dense: Arc<Mutex<TextEmbedding>>,
-    sparse: Arc<Mutex<SparseTextEmbedding>>,
-}
-
+/// Dense + sparse vectors produced for one text.
 pub struct EmbeddingResult {
     pub dense: Vec<f32>,
     pub sparse: SparseVec,
 }
 
+/// Sparse vector as parallel index/value arrays.
 pub struct SparseVec {
     pub indices: Vec<u32>,
     pub values: Vec<f32>,
 }
 
+#[cfg(feature = "embed")]
+use std::sync::{Arc, LazyLock, Mutex};
+
+#[cfg(feature = "embed")]
+use fastembed::{
+    EmbeddingModel, InitOptions, SparseInitOptions, SparseModel, SparseTextEmbedding,
+    TextEmbedding,
+};
+#[cfg(feature = "embed")]
+use opencc_jieba_rs::OpenCC;
+
+#[cfg(feature = "embed")]
+use crate::error::Result;
+
+#[cfg(feature = "embed")]
+static OPENCC: LazyLock<OpenCC> = LazyLock::new(OpenCC::new);
+
+#[cfg(feature = "embed")]
+pub struct EmbeddingService {
+    dense: Arc<Mutex<TextEmbedding>>,
+    sparse: Arc<Mutex<SparseTextEmbedding>>,
+}
+
 /// Segment Chinese text with jieba, rejoin with spaces.
 /// Non-Chinese text passes through with minimal impact.
+#[cfg(feature = "embed")]
 fn segment_for_sparse(text: &str) -> String {
     OPENCC
         .jieba_cut(text, false)
@@ -36,6 +49,7 @@ fn segment_for_sparse(text: &str) -> String {
         .join(" ")
 }
 
+#[cfg(feature = "embed")]
 impl EmbeddingService {
     pub fn new() -> Result<Self> {
         Self::with_options(true)

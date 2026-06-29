@@ -17,7 +17,7 @@ type AppState = Arc<GleanMark>;
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let config = Config::default();
+    let config = Config::load();
     let gleanmark = GleanMark::new(config).await?;
     let state: AppState = Arc::new(gleanmark);
 

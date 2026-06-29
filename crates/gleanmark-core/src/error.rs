@@ -20,8 +20,17 @@ pub enum Error {
     #[error("Bookmark not found: {0}")]
     NotFound(String),
 
+    #[error("Gateway error: {0}")]
+    Gateway(String),
+
     #[error("{0}")]
     Other(String),
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(err: reqwest::Error) -> Self {
+        Error::Gateway(err.to_string())
+    }
 }
 
 impl From<anyhow::Error> for Error {

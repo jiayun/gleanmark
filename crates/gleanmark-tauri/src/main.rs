@@ -101,7 +101,7 @@ async fn start_app(handle: &tauri::AppHandle) -> anyhow::Result<()> {
 
     // Initialize backend (starts Qdrant, loads models)
     update_splash(handle, "Loading embedding models...");
-    let config = gleanmark_core::models::Config::default();
+    let config = gleanmark_core::models::Config::load();
     let gm = Arc::new(gleanmark_core::GleanMark::new(config).await?);
 
     // Start Axum server in background

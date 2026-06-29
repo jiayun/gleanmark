@@ -1,3 +1,4 @@
+pub mod backend;
 pub mod embedding;
 pub mod error;
 pub mod models;
@@ -5,37 +6,71 @@ pub mod qdrant_manager;
 pub mod search;
 pub mod storage;
 
+// The `GleanMark` facade does client-side embedding, so it (and only it) needs
+// the `embed` feature. The cloud gateway uses `storage`/`search`/`backend`
+// directly and builds this crate with `--no-default-features`.
+#[cfg(feature = "embed")]
 use std::path::Path;
 
+#[cfg(feature = "embed")]
 use chrono::Utc;
+#[cfg(feature = "embed")]
 use tracing::info;
+#[cfg(feature = "embed")]
 use uuid::Uuid;
 
+#[cfg(feature = "embed")]
+use crate::backend::{Backend, GatewayBackend, QdrantBackend};
+#[cfg(feature = "embed")]
 use crate::embedding::EmbeddingService;
+#[cfg(feature = "embed")]
 use crate::error::{Error, Result};
+#[cfg(feature = "embed")]
 use crate::models::{Bookmark, BookmarkInput, Config, SearchQuery, SearchResult};
+#[cfg(feature = "embed")]
 use crate::qdrant_manager::QdrantManager;
+#[cfg(feature = "embed")]
 use crate::storage::Storage;
 
+#[cfg(feature = "embed")]
 pub struct GleanMark {
     embedding: EmbeddingService,
-    storage: Storage,
-    _qdrant_manager: QdrantManager,
+    backend: Box<dyn Backend>,
+    /// Local Qdrant subprocess, kept alive for the app lifetime. `None` in
+    /// cloud mode (the gateway owns Qdrant).
+    _qdrant_manager: Option<QdrantManager>,
 }
 
+#[cfg(feature = "embed")]
 impl GleanMark {
     pub async fn new(config: Config) -> Result<Self> {
         std::fs::create_dir_all(&config.data_dir)?;
 
-        let qdrant_manager = QdrantManager::start(&config).await?;
-        let storage = Storage::new(qdrant_manager.url(), &config.collection_name).await?;
+        // Embeddings are computed client-side in every mode.
         let cache_dir = config.data_dir.join("models");
         let embedding =
             EmbeddingService::with_full_options(config.show_download_progress, Some(cache_dir))?;
 
+        let (backend, qdrant_manager): (Box<dyn Backend>, Option<QdrantManager>) =
+            if config.is_cloud() {
+                let url = config.gateway_url.clone().ok_or_else(|| {
+                    Error::Other("cloud mode requires gateway_url in cloud.toml".into())
+                })?;
+                let token = config.gateway_token.clone().ok_or_else(|| {
+                    Error::Other("cloud mode requires gateway_token in cloud.toml".into())
+                })?;
+                info!("Cloud mode: using gateway at {url}");
+                (Box::new(GatewayBackend::new(url, token)), None)
+            } else {
+                let manager = QdrantManager::start(&config).await?;
+                let storage =
+                    Storage::new(manager.url(), &config.collection_name, None).await?;
+                (Box::new(QdrantBackend::new(storage)), Some(manager))
+            };
+
         Ok(Self {
             embedding,
-            storage,
+            backend,
             _qdrant_manager: qdrant_manager,
         })
     }
@@ -55,9 +90,7 @@ impl GleanMark {
         let embed_text = format!("{} {}", input.title, input.content);
         let result = self.embedding.embed_passage(&embed_text).await?;
 
-        self.storage
-            .upsert(&bookmark, result.dense, result.sparse)
-            .await?;
+        self.backend.upsert(&bookmark, result).await?;
 
         info!("Saved bookmark: {} ({})", bookmark.title, bookmark.id);
         Ok(bookmark)
@@ -68,24 +101,24 @@ impl GleanMark {
         let result = self.embedding.embed_query(&query.query).await?;
 
         let tag_filter = query.tags.as_deref();
-        search::hybrid_search(&self.storage, &result, limit, tag_filter).await
+        self.backend.search(&result, limit, tag_filter).await
     }
 
     pub async fn delete(&self, id: &str) -> Result<()> {
-        self.storage.delete(id).await?;
+        self.backend.delete(id).await?;
         info!("Deleted bookmark: {id}");
         Ok(())
     }
 
     pub async fn get(&self, id: &str) -> Result<Bookmark> {
-        self.storage
+        self.backend
             .get(id)
             .await?
             .ok_or_else(|| Error::NotFound(id.to_string()))
     }
 
     pub async fn list(&self, limit: usize, offset: Option<String>) -> Result<Vec<Bookmark>> {
-        let (bookmarks, _next) = self.storage.list(limit as u32, offset).await?;
+        let (bookmarks, _next) = self.backend.list(limit as u32, offset).await?;
         Ok(bookmarks)
     }
 
@@ -95,7 +128,7 @@ impl GleanMark {
         let mut offset: Option<String> = None;
 
         loop {
-            let (batch, next_offset) = self.storage.list(batch_size, offset).await?;
+            let (batch, next_offset) = self.backend.list(batch_size, offset).await?;
             all.extend(batch);
             match next_offset {
                 Some(next) => offset = Some(next),
@@ -119,7 +152,7 @@ impl GleanMark {
         let mut offset: Option<String> = None;
 
         loop {
-            let (batch, next_offset) = self.storage.list(batch_size, offset).await?;
+            let (batch, next_offset) = self.backend.list(batch_size, offset).await?;
             all.extend(batch);
             match next_offset {
                 Some(next) => offset = Some(next),
@@ -132,9 +165,7 @@ impl GleanMark {
         for (i, bookmark) in all.iter().enumerate() {
             let embed_text = format!("{} {}", bookmark.title, bookmark.content);
             let result = self.embedding.embed_passage(&embed_text).await?;
-            self.storage
-                .upsert(bookmark, result.dense, result.sparse)
-                .await?;
+            self.backend.upsert(bookmark, result).await?;
             println!("  [{}/{}] {}", i + 1, total, bookmark.title);
         }
 
@@ -150,9 +181,7 @@ impl GleanMark {
         for bookmark in &bookmarks {
             let embed_text = format!("{} {}", bookmark.title, bookmark.content);
             let result = self.embedding.embed_passage(&embed_text).await?;
-            self.storage
-                .upsert(bookmark, result.dense, result.sparse)
-                .await?;
+            self.backend.upsert(bookmark, result).await?;
         }
 
         info!("Imported {count} bookmarks from {}", path.display());

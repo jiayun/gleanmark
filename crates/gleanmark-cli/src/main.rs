@@ -79,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
-    let config = Config::default();
+    let config = Config::load();
     let gm = GleanMark::new(config).await?;
 
     match cli.command {
@@ -185,7 +185,7 @@ async fn serve(port: u16) -> anyhow::Result<()> {
     use axum::{Json, Router};
     use tower_http::cors::{Any, CorsLayer};
 
-    let config = Config::default();
+    let config = Config::load();
     let gm = Arc::new(GleanMark::new(config).await?);
 
     let cors = CorsLayer::new()

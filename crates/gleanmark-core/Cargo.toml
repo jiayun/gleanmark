@@ -5,9 +5,17 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Core library for GleanMark bookmark search"
 
+[features]
+default = ["embed"]
+# Client-side embedding (fastembed + ONNX + jieba). The cloud gateway depends on
+# this crate with `default-features = false` to avoid linking an ONNX runtime it
+# never uses — it only needs Storage, search, models, and the wire DTOs.
+embed = ["dep:fastembed", "dep:opencc-jieba-rs"]
+
 [dependencies]
 qdrant-client = "1.16"
-fastembed = "5"
+fastembed = { version = "5", optional = true }
+opencc-jieba-rs = { version = "0.7", optional = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -17,7 +25,9 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
 anyhow = "1"
-opencc-jieba-rs = "0.7"
+toml = "0.8"
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
