@@ -14,6 +14,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 gleanmark-core = { workspace = true }
+gleanmark-server = { path = "../gleanmark-server" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

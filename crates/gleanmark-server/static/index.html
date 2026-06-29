@@ -17,6 +17,7 @@
         <a href="#search" data-view="search" class="active">Search</a>
         <a href="#bookmarks" data-view="bookmarks">Bookmarks</a>
         <a href="#import-export" data-view="import-export">Import / Export</a>
+        <a href="#settings" data-view="settings">Settings</a>
       </nav>
     </header>
 
@@ -60,6 +61,31 @@
             <button type="submit">Import</button>
           </form>
           <div id="import-status" class="status"></div>
+        </div>
+      </section>
+
+      <!-- Settings View -->
+      <section data-view="settings" class="hidden">
+        <div class="ie-section">
+          <h2>Backend</h2>
+          <p class="hint">Where bookmarks are stored. Changes take effect after restarting GleanMark.</p>
+          <div id="settings-current" class="status"></div>
+          <form id="settings-form" class="settings-form">
+            <label class="radio-row">
+              <input type="radio" name="mode" value="local">
+              <span>Local — bundled Qdrant on this machine</span>
+            </label>
+            <label class="radio-row">
+              <input type="radio" name="mode" value="cloud">
+              <span>Cloud — remote gateway</span>
+            </label>
+            <div id="cloud-fields" class="cloud-fields">
+              <input type="text" id="gateway-url" placeholder="Gateway URL (https://...)">
+              <input type="password" id="gateway-token" placeholder="Gateway token">
+            </div>
+            <button type="submit">Save</button>
+          </form>
+          <div id="settings-status" class="status"></div>
         </div>
       </section>
     </main>

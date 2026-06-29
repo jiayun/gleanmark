@@ -81,6 +81,22 @@ const API = {
     if (!res.ok) throw new Error((await res.json()).error || `HTTP ${res.status}`);
     return res.json();
   },
+
+  async getConfig() {
+    const res = await fetch('/api/config');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
+  async saveConfig(payload) {
+    const res = await fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+    return res.json();
+  },
 };
 
 // View Switcher
@@ -94,6 +110,7 @@ function switchView(name) {
   );
 
   if (name === 'bookmarks') loadBookmarks();
+  if (name === 'settings') loadSettings();
 }
 
 // Nav click handlers — only set hash, let hashchange handle the switch
@@ -295,6 +312,79 @@ document.addEventListener('click', e => {
     // Fallback: try window.open
     window.open(a.href, '_blank');
   });
+});
+
+// Settings View
+function updateCloudFieldsVisibility() {
+  const checked = document.querySelector('input[name="mode"]:checked');
+  const cloudFields = document.getElementById('cloud-fields');
+  cloudFields.style.display = checked && checked.value === 'cloud' ? 'flex' : 'none';
+}
+
+async function loadSettings() {
+  const current = document.getElementById('settings-current');
+  const status = document.getElementById('settings-status');
+  status.className = 'status';
+  status.textContent = '';
+
+  try {
+    const c = await API.getConfig();
+    document.querySelectorAll('input[name="mode"]').forEach(r => {
+      r.checked = r.value === c.mode;
+    });
+    document.getElementById('gateway-url').value = c.gateway_url || '';
+    const tokenField = document.getElementById('gateway-token');
+    tokenField.value = '';
+    tokenField.placeholder = c.gateway_token_set
+      ? `current: ${c.gateway_token_masked} — leave blank to keep`
+      : 'Gateway token';
+    updateCloudFieldsVisibility();
+
+    current.className = 'status';
+    current.textContent = c.mode === 'cloud'
+      ? `Current: Cloud — ${c.gateway_url || '(no URL set)'}`
+      : 'Current: Local (bundled Qdrant)';
+  } catch (err) {
+    current.className = 'status error';
+    current.textContent = 'Failed to load config: ' + err.message;
+  }
+}
+
+document.querySelectorAll('input[name="mode"]').forEach(r =>
+  r.addEventListener('change', updateCloudFieldsVisibility)
+);
+
+document.getElementById('settings-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const status = document.getElementById('settings-status');
+  const checked = document.querySelector('input[name="mode"]:checked');
+  if (!checked) return;
+
+  const payload = { mode: checked.value };
+  if (checked.value === 'cloud') {
+    payload.gateway_url = document.getElementById('gateway-url').value.trim();
+    if (!payload.gateway_url) {
+      status.className = 'status error';
+      status.textContent = 'Gateway URL is required for cloud mode.';
+      return;
+    }
+    const tok = document.getElementById('gateway-token').value.trim();
+    if (tok) payload.gateway_token = tok;
+  }
+
+  status.className = 'status';
+  status.textContent = 'Saving...';
+  try {
+    const res = await API.saveConfig(payload);
+    status.className = 'status success';
+    status.textContent = res.restart_required
+      ? 'Saved. Restart GleanMark for the change to take effect.'
+      : 'Saved.';
+    loadSettings();
+  } catch (err) {
+    status.className = 'status error';
+    status.textContent = 'Error: ' + err.message;
+  }
 });
 
 // Init
