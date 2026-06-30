@@ -35,6 +35,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/import", post(import_bookmarks))
         .route("/api/open", post(open_url))
         .route("/api/config", get(get_config).put(put_config))
+        .route("/api/auth/status", get(auth_status))
+        .route("/api/auth/login", post(auth_login))
+        .route("/api/auth/logout", post(auth_logout))
         .fallback(static_handler)
         .layer(cors)
         .with_state(state)
@@ -135,16 +138,33 @@ async fn open_url(Json(req): Json<OpenRequest>) -> StatusCode {
 /// URL. CORS alone does not stop the cross-site request from executing.
 const UI_ORIGIN: &str = "http://127.0.0.1:21580";
 
+/// Reject any mutation whose `Origin` is not exactly the UI's. A sandboxed
+/// iframe on a malicious site serializes its origin to `null`, so missing/`null`
+/// is rejected too. CORS alone does not stop the cross-site request executing.
+fn origin_ok(headers: &HeaderMap) -> bool {
+    headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) == Some(UI_ORIGIN)
+}
+
+fn forbidden_origin() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        Json(serde_json::json!({ "error": "forbidden origin" })),
+    )
+        .into_response()
+}
+
 #[derive(Serialize)]
 struct ConfigView {
     mode: &'static str,
     gateway_url: Option<String>,
-    gateway_token_set: bool,
-    /// Masked preview only — never the plaintext token.
-    gateway_token_masked: Option<String>,
+    supabase_url: Option<String>,
+    // The anon key is a public (publishable) key by design, so it is not secret.
+    supabase_anon_key: Option<String>,
 }
 
-/// GET /api/config — current backend config with the token redacted.
+/// GET /api/config — current backend config. Nothing here is secret: the
+/// gateway URL, Supabase URL and anon key are all public. The actual session
+/// (refresh token) lives in `session.json` and is never returned.
 async fn get_config() -> Json<ConfigView> {
     let c = Config::load();
     Json(ConfigView {
@@ -152,20 +172,10 @@ async fn get_config() -> Json<ConfigView> {
             BackendMode::Cloud => "cloud",
             BackendMode::Local => "local",
         },
-        gateway_token_masked: c.gateway_token.as_deref().map(mask_token),
-        gateway_token_set: c.gateway_token.is_some(),
         gateway_url: c.gateway_url,
+        supabase_url: c.supabase_url,
+        supabase_anon_key: c.supabase_anon_key,
     })
-}
-
-fn mask_token(t: &str) -> String {
-    let n = t.chars().count();
-    if n <= 8 {
-        return "•".repeat(n);
-    }
-    let first: String = t.chars().take(4).collect();
-    let last: String = t.chars().skip(n - 4).collect();
-    format!("{first}…{last}")
 }
 
 #[derive(Deserialize)]
@@ -173,46 +183,37 @@ struct ConfigUpdate {
     mode: String,
     #[serde(default)]
     gateway_url: Option<String>,
-    /// Empty/absent → keep the existing token (the UI never sees the plaintext).
     #[serde(default)]
-    gateway_token: Option<String>,
+    supabase_url: Option<String>,
+    #[serde(default)]
+    supabase_anon_key: Option<String>,
 }
 
 /// PUT /api/config — write `{data_dir}/cloud.toml`. Origin-guarded.
 async fn put_config(headers: HeaderMap, Json(body): Json<ConfigUpdate>) -> Response {
-    let origin = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok());
-    if origin != Some(UI_ORIGIN) {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({ "error": "forbidden origin" })),
-        )
-            .into_response();
+    if !origin_ok(&headers) {
+        return forbidden_origin();
     }
 
-    let existing = Config::load();
-    let path = existing.cloud_config_path();
+    let path = Config::load().cloud_config_path();
 
     let contents = match body.mode.as_str() {
         "local" => "mode = \"local\"\n".to_string(),
         "cloud" => {
-            let url = match body.gateway_url.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-                Some(u) => u.to_string(),
+            let trim = |o: Option<String>| o.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+            let gateway_url = match trim(body.gateway_url) {
+                Some(u) => u,
                 None => return bad_request("gateway_url is required for cloud mode"),
             };
-            // Preserve the existing token when the field is left blank.
-            let token = match body
-                .gateway_token
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-            {
-                Some(t) => t.to_string(),
-                None => match existing.gateway_token {
-                    Some(t) => t,
-                    None => return bad_request("gateway_token is required for cloud mode"),
-                },
+            let supabase_url = match trim(body.supabase_url) {
+                Some(u) => u,
+                None => return bad_request("supabase_url is required for cloud mode"),
             };
-            format_cloud_toml(&url, &token)
+            let supabase_anon_key = match trim(body.supabase_anon_key) {
+                Some(k) => k,
+                None => return bad_request("supabase_anon_key is required for cloud mode"),
+            };
+            format_cloud_toml(&gateway_url, &supabase_url, &supabase_anon_key)
         }
         _ => return bad_request("mode must be \"local\" or \"cloud\""),
     };
@@ -241,16 +242,83 @@ fn bad_request(msg: &str) -> Response {
         .into_response()
 }
 
-fn format_cloud_toml(url: &str, token: &str) -> String {
+fn format_cloud_toml(gateway_url: &str, supabase_url: &str, supabase_anon_key: &str) -> String {
     format!(
-        "mode = \"cloud\"\ngateway_url = \"{}\"\ngateway_token = \"{}\"\n",
-        toml_escape(url),
-        toml_escape(token)
+        "mode = \"cloud\"\ngateway_url = \"{}\"\nsupabase_url = \"{}\"\nsupabase_anon_key = \"{}\"\n",
+        toml_escape(gateway_url),
+        toml_escape(supabase_url),
+        toml_escape(supabase_anon_key),
     )
 }
 
 fn toml_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+// ---------------------------------------------------------------------------
+// Auth (Supabase sign-in) — cloud mode only
+// ---------------------------------------------------------------------------
+
+/// GET /api/auth/status — whether cloud mode is active and a user is signed in.
+async fn auth_status(State(gm): State<AppState>) -> Json<serde_json::Value> {
+    match gm.session_manager() {
+        Some(session) => {
+            let s = session.status().await;
+            Json(serde_json::json!({
+                "cloud": true,
+                "signed_in": s.signed_in,
+                "email": s.email,
+            }))
+        }
+        None => Json(serde_json::json!({ "cloud": false, "signed_in": false })),
+    }
+}
+
+#[derive(Deserialize)]
+struct LoginRequest {
+    email: String,
+    password: String,
+}
+
+/// POST /api/auth/login — sign in to Supabase. Origin-guarded (carries
+/// credentials and mutates session state). Takes effect immediately — no restart.
+async fn auth_login(
+    State(gm): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<LoginRequest>,
+) -> Response {
+    if !origin_ok(&headers) {
+        return forbidden_origin();
+    }
+    let Some(session) = gm.session_manager() else {
+        return bad_request("not in cloud mode — save cloud settings and restart first");
+    };
+    match session.login(&body.email, &body.password).await {
+        Ok(()) => {
+            let s = session.status().await;
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({ "signed_in": true, "email": s.email })),
+            )
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+/// POST /api/auth/logout — clear the local session. Origin-guarded.
+async fn auth_logout(State(gm): State<AppState>, headers: HeaderMap) -> Response {
+    if !origin_ok(&headers) {
+        return forbidden_origin();
+    }
+    if let Some(session) = gm.session_manager() {
+        session.logout().await;
+    }
+    (StatusCode::OK, Json(serde_json::json!({ "signed_in": false }))).into_response()
 }
 
 #[cfg(unix)]

@@ -23,6 +23,9 @@ pub enum Error {
     #[error("Gateway error: {0}")]
     Gateway(String),
 
+    #[error("Auth error: {0}")]
+    Auth(String),
+
     #[error("{0}")]
     Other(String),
 }

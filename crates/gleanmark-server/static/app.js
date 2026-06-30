@@ -97,6 +97,28 @@ const API = {
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
     return res.json();
   },
+
+  async getAuthStatus() {
+    const res = await fetch('/api/auth/status');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
+  async login(email, password) {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+    return res.json();
+  },
+
+  async logout() {
+    const res = await fetch('/api/auth/logout', { method: 'POST' });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+    return res.json();
+  },
 };
 
 // View Switcher
@@ -333,11 +355,8 @@ async function loadSettings() {
       r.checked = r.value === c.mode;
     });
     document.getElementById('gateway-url').value = c.gateway_url || '';
-    const tokenField = document.getElementById('gateway-token');
-    tokenField.value = '';
-    tokenField.placeholder = c.gateway_token_set
-      ? `current: ${c.gateway_token_masked} — leave blank to keep`
-      : 'Gateway token';
+    document.getElementById('supabase-url').value = c.supabase_url || '';
+    document.getElementById('supabase-anon-key').value = c.supabase_anon_key || '';
     updateCloudFieldsVisibility();
 
     current.className = 'status';
@@ -347,6 +366,44 @@ async function loadSettings() {
   } catch (err) {
     current.className = 'status error';
     current.textContent = 'Failed to load config: ' + err.message;
+  }
+
+  loadAuthStatus();
+}
+
+// Reflect sign-in state: show the Account section only in cloud mode, and
+// toggle between the login form and a "signed in as ..." + Sign out button.
+async function loadAuthStatus() {
+  const section = document.getElementById('account-section');
+  const authStatus = document.getElementById('auth-status');
+  const loginForm = document.getElementById('login-form');
+  const logoutBtn = document.getElementById('logout-btn');
+  const loginStatus = document.getElementById('login-status');
+  loginStatus.className = 'status';
+  loginStatus.textContent = '';
+
+  try {
+    const s = await API.getAuthStatus();
+    if (!s.cloud) {
+      section.classList.add('hidden');
+      return;
+    }
+    section.classList.remove('hidden');
+    if (s.signed_in) {
+      authStatus.className = 'status success';
+      authStatus.textContent = `Signed in${s.email ? ' as ' + s.email : ''}.`;
+      loginForm.classList.add('hidden');
+      logoutBtn.classList.remove('hidden');
+    } else {
+      authStatus.className = 'status';
+      authStatus.textContent = 'Not signed in.';
+      loginForm.classList.remove('hidden');
+      logoutBtn.classList.add('hidden');
+    }
+  } catch (err) {
+    section.classList.remove('hidden');
+    authStatus.className = 'status error';
+    authStatus.textContent = 'Failed to load account: ' + err.message;
   }
 }
 
@@ -363,13 +420,13 @@ document.getElementById('settings-form').addEventListener('submit', async e => {
   const payload = { mode: checked.value };
   if (checked.value === 'cloud') {
     payload.gateway_url = document.getElementById('gateway-url').value.trim();
-    if (!payload.gateway_url) {
+    payload.supabase_url = document.getElementById('supabase-url').value.trim();
+    payload.supabase_anon_key = document.getElementById('supabase-anon-key').value.trim();
+    if (!payload.gateway_url || !payload.supabase_url || !payload.supabase_anon_key) {
       status.className = 'status error';
-      status.textContent = 'Gateway URL is required for cloud mode.';
+      status.textContent = 'Gateway URL, Supabase URL and anon key are all required for cloud mode.';
       return;
     }
-    const tok = document.getElementById('gateway-token').value.trim();
-    if (tok) payload.gateway_token = tok;
   }
 
   status.className = 'status';
@@ -384,6 +441,38 @@ document.getElementById('settings-form').addEventListener('submit', async e => {
   } catch (err) {
     status.className = 'status error';
     status.textContent = 'Error: ' + err.message;
+  }
+});
+
+document.getElementById('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const status = document.getElementById('login-status');
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) return;
+
+  status.className = 'status';
+  status.textContent = 'Signing in...';
+  try {
+    await API.login(email, password);
+    document.getElementById('login-password').value = '';
+    status.className = 'status';
+    status.textContent = '';
+    loadAuthStatus();
+  } catch (err) {
+    status.className = 'status error';
+    status.textContent = 'Sign-in failed: ' + err.message;
+  }
+});
+
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  const status = document.getElementById('login-status');
+  try {
+    await API.logout();
+    loadAuthStatus();
+  } catch (err) {
+    status.className = 'status error';
+    status.textContent = 'Sign-out failed: ' + err.message;
   }
 });
 

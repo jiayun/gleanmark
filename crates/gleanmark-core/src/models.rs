@@ -60,9 +60,11 @@ pub struct Config {
     pub qdrant_url: String,
     /// Cloud gateway base URL, e.g. `https://...railway.app` (cloud mode only).
     pub gateway_url: Option<String>,
-    /// Bearer token sent to the gateway (cloud mode only). Personal: a static
-    /// token; Phase 2: a Supabase JWT.
-    pub gateway_token: Option<String>,
+    /// Supabase project URL, e.g. `https://xxxx.supabase.co` (cloud mode only).
+    /// Used to sign in and refresh the user JWT sent to the gateway.
+    pub supabase_url: Option<String>,
+    /// Supabase anon (public) key — needed to call the auth token endpoint.
+    pub supabase_anon_key: Option<String>,
     pub data_dir: PathBuf,
     pub collection_name: String,
     /// Show download progress for embedding models (disable for MCP/stdio)
@@ -76,7 +78,8 @@ struct CloudFile {
     mode: Option<BackendMode>,
     qdrant_url: Option<String>,
     gateway_url: Option<String>,
-    gateway_token: Option<String>,
+    supabase_url: Option<String>,
+    supabase_anon_key: Option<String>,
     collection_name: Option<String>,
 }
 
@@ -90,7 +93,8 @@ impl Default for Config {
             mode: BackendMode::Local,
             qdrant_url: "http://localhost:6334".to_string(),
             gateway_url: None,
-            gateway_token: None,
+            supabase_url: None,
+            supabase_anon_key: None,
             data_dir,
             collection_name: "bookmarks".to_string(),
             show_download_progress: true,
@@ -106,6 +110,11 @@ impl Config {
     /// Path of the optional cloud-config overlay file.
     pub fn cloud_config_path(&self) -> PathBuf {
         self.data_dir.join("cloud.toml")
+    }
+
+    /// Path of the machine-managed Supabase session (rotating tokens, chmod 600).
+    pub fn session_path(&self) -> PathBuf {
+        self.data_dir.join("session.json")
     }
 
     /// Start from defaults (local mode), then overlay `{data_dir}/cloud.toml`
@@ -131,8 +140,11 @@ impl Config {
                 if file.gateway_url.is_some() {
                     config.gateway_url = file.gateway_url;
                 }
-                if file.gateway_token.is_some() {
-                    config.gateway_token = file.gateway_token;
+                if file.supabase_url.is_some() {
+                    config.supabase_url = file.supabase_url;
+                }
+                if file.supabase_anon_key.is_some() {
+                    config.supabase_anon_key = file.supabase_anon_key;
                 }
                 if let Some(name) = file.collection_name {
                     config.collection_name = name;

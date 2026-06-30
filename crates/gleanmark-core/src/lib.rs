@@ -4,6 +4,7 @@ pub mod error;
 pub mod models;
 pub mod qdrant_manager;
 pub mod search;
+pub mod session;
 pub mod storage;
 
 // The `GleanMark` facade does client-side embedding, so it (and only it) needs
@@ -30,7 +31,11 @@ use crate::models::{Bookmark, BookmarkInput, Config, SearchQuery, SearchResult};
 #[cfg(feature = "embed")]
 use crate::qdrant_manager::QdrantManager;
 #[cfg(feature = "embed")]
+use crate::session::SessionManager;
+#[cfg(feature = "embed")]
 use crate::storage::Storage;
+#[cfg(feature = "embed")]
+use std::sync::Arc;
 
 #[cfg(feature = "embed")]
 pub struct GleanMark {
@@ -39,6 +44,9 @@ pub struct GleanMark {
     /// Local Qdrant subprocess, kept alive for the app lifetime. `None` in
     /// cloud mode (the gateway owns Qdrant).
     _qdrant_manager: Option<QdrantManager>,
+    /// Supabase session, shared with the cloud backend. `None` in local mode.
+    /// Exposed so the HTTP layer can drive login/logout without a restart.
+    session: Option<Arc<SessionManager>>,
 }
 
 #[cfg(feature = "embed")]
@@ -51,28 +59,47 @@ impl GleanMark {
         let embedding =
             EmbeddingService::with_full_options(config.show_download_progress, Some(cache_dir))?;
 
-        let (backend, qdrant_manager): (Box<dyn Backend>, Option<QdrantManager>) =
-            if config.is_cloud() {
-                let url = config.gateway_url.clone().ok_or_else(|| {
-                    Error::Other("cloud mode requires gateway_url in cloud.toml".into())
-                })?;
-                let token = config.gateway_token.clone().ok_or_else(|| {
-                    Error::Other("cloud mode requires gateway_token in cloud.toml".into())
-                })?;
-                info!("Cloud mode: using gateway at {url}");
-                (Box::new(GatewayBackend::new(url, token)), None)
-            } else {
-                let manager = QdrantManager::start(&config).await?;
-                let storage =
-                    Storage::new(manager.url(), &config.collection_name, None).await?;
-                (Box::new(QdrantBackend::new(storage)), Some(manager))
-            };
+        #[allow(clippy::type_complexity)]
+        let (backend, qdrant_manager, session): (
+            Box<dyn Backend>,
+            Option<QdrantManager>,
+            Option<Arc<SessionManager>>,
+        ) = if config.is_cloud() {
+            let url = config.gateway_url.clone().ok_or_else(|| {
+                Error::Other("cloud mode requires gateway_url in cloud.toml".into())
+            })?;
+            let supabase_url = config.supabase_url.clone().ok_or_else(|| {
+                Error::Other("cloud mode requires supabase_url in cloud.toml".into())
+            })?;
+            let anon_key = config.supabase_anon_key.clone().ok_or_else(|| {
+                Error::Other("cloud mode requires supabase_anon_key in cloud.toml".into())
+            })?;
+            info!("Cloud mode: using gateway at {url}");
+            let session = Arc::new(SessionManager::new(
+                supabase_url,
+                anon_key,
+                config.session_path(),
+            ));
+            let backend = Box::new(GatewayBackend::new(url, session.clone()));
+            (backend, None, Some(session))
+        } else {
+            let manager = QdrantManager::start(&config).await?;
+            let storage = Storage::new(manager.url(), &config.collection_name, None).await?;
+            (Box::new(QdrantBackend::new(storage)), Some(manager), None)
+        };
 
         Ok(Self {
             embedding,
             backend,
             _qdrant_manager: qdrant_manager,
+            session,
         })
+    }
+
+    /// The Supabase session manager (cloud mode only). The HTTP layer uses this
+    /// to sign in/out and report status without restarting the app.
+    pub fn session_manager(&self) -> Option<Arc<SessionManager>> {
+        self.session.clone()
     }
 
     pub async fn save_bookmark(&self, input: BookmarkInput) -> Result<Bookmark> {

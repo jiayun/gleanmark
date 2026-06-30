@@ -9,6 +9,8 @@
 //! The wire DTOs ([`UpsertBody`], [`SearchBody`], [`ListResponse`]) are public
 //! so the gateway service (separate crate) can deserialize the same shapes.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +18,7 @@ use crate::embedding::EmbeddingResult;
 use crate::error::{Error, Result};
 use crate::models::{Bookmark, SearchResult};
 use crate::search;
+use crate::session::SessionManager;
 use crate::storage::Storage;
 
 #[async_trait]
@@ -120,20 +123,36 @@ impl Backend for QdrantBackend {
 pub struct GatewayBackend {
     http: reqwest::Client,
     base_url: String,
-    token: String,
+    session: Arc<SessionManager>,
 }
 
 impl GatewayBackend {
-    pub fn new(base_url: String, token: String) -> Self {
+    pub fn new(base_url: String, session: Arc<SessionManager>) -> Self {
         Self {
             http: reqwest::Client::new(),
             base_url: base_url.trim_end_matches('/').to_string(),
-            token,
+            session,
         }
     }
 
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.base_url, path)
+    }
+
+    /// Send a request with the current `access_token`; on a 401, refresh the
+    /// session once and retry. `build` is called per attempt with a fresh
+    /// bearer token so the rebuilt request carries the new credential.
+    async fn send(
+        &self,
+        build: impl Fn(&str) -> reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response> {
+        let token = self.session.bearer().await?;
+        let resp = build(&token).send().await?;
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            let token = self.session.force_refresh().await?;
+            return Ok(build(&token).send().await?);
+        }
+        Ok(resp)
     }
 }
 
@@ -158,11 +177,7 @@ impl Backend for GatewayBackend {
             sparse_values: embedding.sparse.values,
         };
         let resp = self
-            .http
-            .post(self.url("/v1/bookmarks"))
-            .bearer_auth(&self.token)
-            .json(&body)
-            .send()
+            .send(|tok| self.http.post(self.url("/v1/bookmarks")).bearer_auth(tok).json(&body))
             .await?;
         ensure_ok(resp).await?;
         Ok(())
@@ -182,22 +197,16 @@ impl Backend for GatewayBackend {
             tags: tags.map(|t| t.to_vec()),
         };
         let resp = self
-            .http
-            .post(self.url("/v1/search"))
-            .bearer_auth(&self.token)
-            .json(&body)
-            .send()
+            .send(|tok| self.http.post(self.url("/v1/search")).bearer_auth(tok).json(&body))
             .await?;
         let resp = ensure_ok(resp).await?;
         Ok(resp.json().await?)
     }
 
     async fn get(&self, id: &str) -> Result<Option<Bookmark>> {
+        let path = format!("/v1/bookmarks/{id}");
         let resp = self
-            .http
-            .get(self.url(&format!("/v1/bookmarks/{id}")))
-            .bearer_auth(&self.token)
-            .send()
+            .send(|tok| self.http.get(self.url(&path)).bearer_auth(tok))
             .await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
@@ -207,11 +216,9 @@ impl Backend for GatewayBackend {
     }
 
     async fn delete(&self, id: &str) -> Result<()> {
+        let path = format!("/v1/bookmarks/{id}");
         let resp = self
-            .http
-            .delete(self.url(&format!("/v1/bookmarks/{id}")))
-            .bearer_auth(&self.token)
-            .send()
+            .send(|tok| self.http.delete(self.url(&path)).bearer_auth(tok))
             .await?;
         ensure_ok(resp).await?;
         Ok(())
@@ -222,15 +229,20 @@ impl Backend for GatewayBackend {
         limit: u32,
         offset: Option<String>,
     ) -> Result<(Vec<Bookmark>, Option<String>)> {
-        let mut req = self
-            .http
-            .get(self.url("/v1/bookmarks"))
-            .bearer_auth(&self.token)
-            .query(&[("limit", limit.to_string())]);
-        if let Some(off) = offset {
-            req = req.query(&[("offset", off)]);
-        }
-        let resp = ensure_ok(req.send().await?).await?;
+        let resp = self
+            .send(|tok| {
+                let mut req = self
+                    .http
+                    .get(self.url("/v1/bookmarks"))
+                    .bearer_auth(tok)
+                    .query(&[("limit", limit.to_string())]);
+                if let Some(ref off) = offset {
+                    req = req.query(&[("offset", off)]);
+                }
+                req
+            })
+            .await?;
+        let resp = ensure_ok(resp).await?;
         let body: ListResponse = resp.json().await?;
         Ok((body.bookmarks, body.next))
     }

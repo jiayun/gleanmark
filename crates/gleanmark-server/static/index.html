@@ -77,15 +77,30 @@
             </label>
             <label class="radio-row">
               <input type="radio" name="mode" value="cloud">
-              <span>Cloud — remote gateway</span>
+              <span>Cloud — remote gateway (sign in below)</span>
             </label>
             <div id="cloud-fields" class="cloud-fields">
               <input type="text" id="gateway-url" placeholder="Gateway URL (https://...)">
-              <input type="password" id="gateway-token" placeholder="Gateway token">
+              <input type="text" id="supabase-url" placeholder="Supabase URL (https://xxxx.supabase.co)">
+              <input type="text" id="supabase-anon-key" placeholder="Supabase anon (public) key">
             </div>
             <button type="submit">Save</button>
           </form>
           <div id="settings-status" class="status"></div>
+        </div>
+
+        <!-- Account (cloud mode only) -->
+        <div class="ie-section hidden" id="account-section">
+          <h2>Account</h2>
+          <p class="hint">Sign in to your GleanMark Cloud account. Your bookmarks are private to your account.</p>
+          <div id="auth-status" class="status"></div>
+          <form id="login-form" class="settings-form">
+            <input type="email" id="login-email" placeholder="Email" autocomplete="username">
+            <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+            <button type="submit">Sign in</button>
+          </form>
+          <button id="logout-btn" class="btn-secondary hidden">Sign out</button>
+          <div id="login-status" class="status"></div>
         </div>
       </section>
     </main>
