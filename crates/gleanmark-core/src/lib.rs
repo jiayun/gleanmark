@@ -149,6 +149,12 @@ impl GleanMark {
         Ok(bookmarks)
     }
 
+    /// Usage summary in cloud mode (`{plan, this_month, bookmarks_total}`),
+    /// or `None` in local mode.
+    pub async fn usage(&self) -> Result<Option<serde_json::Value>> {
+        self.backend.usage().await
+    }
+
     pub async fn export_json(&self, path: &Path) -> Result<usize> {
         let mut all = Vec::new();
         let batch_size = 100u32;

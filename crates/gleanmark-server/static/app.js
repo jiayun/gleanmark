@@ -119,6 +119,12 @@ const API = {
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
     return res.json();
   },
+
+  async getUsage() {
+    const res = await fetch('/api/usage');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
 };
 
 // View Switcher
@@ -394,16 +400,35 @@ async function loadAuthStatus() {
       authStatus.textContent = `Signed in${s.email ? ' as ' + s.email : ''}.`;
       loginForm.classList.add('hidden');
       logoutBtn.classList.remove('hidden');
+      loadUsage();
     } else {
       authStatus.className = 'status';
       authStatus.textContent = 'Not signed in.';
       loginForm.classList.remove('hidden');
       logoutBtn.classList.add('hidden');
+      document.getElementById('usage-line').classList.add('hidden');
     }
   } catch (err) {
     section.classList.remove('hidden');
     authStatus.className = 'status error';
     authStatus.textContent = 'Failed to load account: ' + err.message;
+  }
+}
+
+// Show "This month: N · Total: M · Plan: free" when usage tracking is on.
+async function loadUsage() {
+  const line = document.getElementById('usage-line');
+  try {
+    const u = await API.getUsage();
+    if (u.this_month === null || u.this_month === undefined || u.tracking === false) {
+      line.classList.add('hidden');
+      return;
+    }
+    const plan = u.plan || 'free';
+    line.textContent = `This month: ${u.this_month} · Total: ${u.bookmarks_total ?? 0} · Plan: ${plan}`;
+    line.classList.remove('hidden');
+  } catch {
+    line.classList.add('hidden');
   }
 }
 

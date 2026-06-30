@@ -37,6 +37,12 @@ pub trait Backend: Send + Sync {
         limit: u32,
         offset: Option<String>,
     ) -> Result<(Vec<Bookmark>, Option<String>)>;
+
+    /// Usage summary (cloud mode). `None` when the backend has no notion of
+    /// usage (local mode).
+    async fn usage(&self) -> Result<Option<serde_json::Value>> {
+        Ok(None)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -245,5 +251,13 @@ impl Backend for GatewayBackend {
         let resp = ensure_ok(resp).await?;
         let body: ListResponse = resp.json().await?;
         Ok((body.bookmarks, body.next))
+    }
+
+    async fn usage(&self) -> Result<Option<serde_json::Value>> {
+        let resp = self
+            .send(|tok| self.http.get(self.url("/v1/usage")).bearer_auth(tok))
+            .await?;
+        let resp = ensure_ok(resp).await?;
+        Ok(Some(resp.json().await?))
     }
 }

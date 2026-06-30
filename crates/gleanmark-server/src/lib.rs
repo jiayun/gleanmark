@@ -38,6 +38,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/auth/status", get(auth_status))
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/logout", post(auth_logout))
+        .route("/api/usage", get(get_usage_summary))
         .fallback(static_handler)
         .layer(cors)
         .with_state(state)
@@ -319,6 +320,11 @@ async fn auth_logout(State(gm): State<AppState>, headers: HeaderMap) -> Response
         session.logout().await;
     }
     (StatusCode::OK, Json(serde_json::json!({ "signed_in": false }))).into_response()
+}
+
+/// GET /api/usage — cloud usage summary, or `{}` in local mode.
+async fn get_usage_summary(State(gm): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
+    Ok(Json(gm.usage().await?.unwrap_or_else(|| serde_json::json!({}))))
 }
 
 #[cfg(unix)]
