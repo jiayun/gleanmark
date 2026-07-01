@@ -6,6 +6,15 @@ use qdrant_client::qdrant::Value;
 use qdrant_client::Payload;
 use serde::{Deserialize, Serialize};
 
+/// Baked-in connection defaults for the hosted GleanMark Cloud. None are secret:
+/// the gateway/Supabase URLs are public and the anon key is a *publishable* key
+/// meant to ship in clients. Cloud mode uses these unless `cloud.toml` overrides
+/// them, so a user only picks "Cloud" and signs in — no URLs to type. The one
+/// real secret (Supabase service_role key) lives only in the gateway's env.
+pub const DEFAULT_GATEWAY_URL: &str = "https://gleanmark-cloud-production.up.railway.app";
+pub const DEFAULT_SUPABASE_URL: &str = "https://eryajmyaocyqbwncokto.supabase.co";
+pub const DEFAULT_SUPABASE_ANON_KEY: &str = "sb_publishable_22U2GCtN7nS5kIkqDEbJ4g_Ckkmua6F";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bookmark {
     pub id: String,
@@ -153,6 +162,21 @@ impl Config {
             Err(e) => {
                 tracing::warn!("Ignoring malformed {}: {e}", path.display());
             }
+        }
+
+        // Cloud mode: fill any unset connection value from the baked-in hosted
+        // defaults, so a `cloud.toml` of just `mode = "cloud"` fully configures
+        // cloud. Explicit values in the file still win (self-hosters/dev).
+        if config.is_cloud() {
+            config
+                .gateway_url
+                .get_or_insert_with(|| DEFAULT_GATEWAY_URL.to_string());
+            config
+                .supabase_url
+                .get_or_insert_with(|| DEFAULT_SUPABASE_URL.to_string());
+            config
+                .supabase_anon_key
+                .get_or_insert_with(|| DEFAULT_SUPABASE_ANON_KEY.to_string());
         }
 
         config

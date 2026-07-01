@@ -13,7 +13,7 @@ GleanMark lets you save web articles as bookmarks with their content, then find 
 - **Saves content, not just URLs** — When you bookmark an article, GleanMark captures the text so you can search against it later, even if the original page goes offline
 - **Finds by meaning** — Hybrid search combines semantic understanding (vector embeddings) with keyword matching (BM25), so searching "team motivation strategies" finds your Harvard Business Review article about employee morale
 - **Works with AI agents** — Expose your knowledge base to Claude via MCP. Ask "what articles did I save about X?" and your AI assistant searches your personal library directly
-- **Runs 100% locally** — No cloud accounts, no API keys, no subscription fees. Embeddings generated on-device, data stored on your machine
+- **Local-first** — Runs entirely on your machine by default: no accounts, no API keys, embeddings on-device, data stored locally. An optional hosted **Cloud** (invite-only) adds cross-device sync — see below
 - **Grows more valuable over time** — As you accumulate hundreds of bookmarks, GleanMark becomes a personal corpus that reflects your interests and research, ready to be queried, referenced, and cited
 
 ## Features
@@ -69,6 +69,18 @@ Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/gle
 2. Click the GleanMark icon on any page to save it
 
 > **Developers**: You can also load the `extension/` folder as an unpacked extension via `chrome://extensions/`.
+
+### Cloud (optional, invite-only)
+
+By default everything is local. If you'd rather sync bookmarks across devices
+without running Qdrant locally, GleanMark offers a hosted **Cloud** backend:
+embeddings are still computed on your device, and only the pre-computed vectors +
+content are sent to your private, per-account collection.
+
+Cloud is **invite-only** for now. Open **Settings → "Interested in GleanMark
+Cloud?"** in the app to request access (and tell us whether you'd pay for it).
+Once you have an account, switch **Settings → Backend → Cloud** and sign in — no
+URLs or keys to configure.
 
 ### MCP Server (AI Agents)
 

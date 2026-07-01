@@ -39,6 +39,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/logout", post(auth_logout))
         .route("/api/usage", get(get_usage_summary))
+        .route("/api/waitlist", post(join_waitlist))
         .fallback(static_handler)
         .layer(cors)
         .with_state(state)
@@ -157,15 +158,13 @@ fn forbidden_origin() -> Response {
 #[derive(Serialize)]
 struct ConfigView {
     mode: &'static str,
+    /// The effective gateway URL (baked hosted default in cloud mode). Public;
+    /// shown only as "Current: Cloud — …". The user never types it.
     gateway_url: Option<String>,
-    supabase_url: Option<String>,
-    // The anon key is a public (publishable) key by design, so it is not secret.
-    supabase_anon_key: Option<String>,
 }
 
-/// GET /api/config — current backend config. Nothing here is secret: the
-/// gateway URL, Supabase URL and anon key are all public. The actual session
-/// (refresh token) lives in `session.json` and is never returned.
+/// GET /api/config — current backend mode. The hosted cloud connection details
+/// are baked in, so there is nothing for the user to enter or for us to redact.
 async fn get_config() -> Json<ConfigView> {
     let c = Config::load();
     Json(ConfigView {
@@ -174,23 +173,16 @@ async fn get_config() -> Json<ConfigView> {
             BackendMode::Local => "local",
         },
         gateway_url: c.gateway_url,
-        supabase_url: c.supabase_url,
-        supabase_anon_key: c.supabase_anon_key,
     })
 }
 
 #[derive(Deserialize)]
 struct ConfigUpdate {
     mode: String,
-    #[serde(default)]
-    gateway_url: Option<String>,
-    #[serde(default)]
-    supabase_url: Option<String>,
-    #[serde(default)]
-    supabase_anon_key: Option<String>,
 }
 
-/// PUT /api/config — write `{data_dir}/cloud.toml`. Origin-guarded.
+/// PUT /api/config — write `{data_dir}/cloud.toml`. Origin-guarded. Cloud mode
+/// just records `mode = "cloud"`; `Config::load()` supplies the hosted defaults.
 async fn put_config(headers: HeaderMap, Json(body): Json<ConfigUpdate>) -> Response {
     if !origin_ok(&headers) {
         return forbidden_origin();
@@ -199,23 +191,8 @@ async fn put_config(headers: HeaderMap, Json(body): Json<ConfigUpdate>) -> Respo
     let path = Config::load().cloud_config_path();
 
     let contents = match body.mode.as_str() {
-        "local" => "mode = \"local\"\n".to_string(),
-        "cloud" => {
-            let trim = |o: Option<String>| o.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-            let gateway_url = match trim(body.gateway_url) {
-                Some(u) => u,
-                None => return bad_request("gateway_url is required for cloud mode"),
-            };
-            let supabase_url = match trim(body.supabase_url) {
-                Some(u) => u,
-                None => return bad_request("supabase_url is required for cloud mode"),
-            };
-            let supabase_anon_key = match trim(body.supabase_anon_key) {
-                Some(k) => k,
-                None => return bad_request("supabase_anon_key is required for cloud mode"),
-            };
-            format_cloud_toml(&gateway_url, &supabase_url, &supabase_anon_key)
-        }
+        "local" => "mode = \"local\"\n",
+        "cloud" => "mode = \"cloud\"\n",
         _ => return bad_request("mode must be \"local\" or \"cloud\""),
     };
 
@@ -241,19 +218,6 @@ fn bad_request(msg: &str) -> Response {
         Json(serde_json::json!({ "error": msg })),
     )
         .into_response()
-}
-
-fn format_cloud_toml(gateway_url: &str, supabase_url: &str, supabase_anon_key: &str) -> String {
-    format!(
-        "mode = \"cloud\"\ngateway_url = \"{}\"\nsupabase_url = \"{}\"\nsupabase_anon_key = \"{}\"\n",
-        toml_escape(gateway_url),
-        toml_escape(supabase_url),
-        toml_escape(supabase_anon_key),
-    )
-}
-
-fn toml_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +289,43 @@ async fn auth_logout(State(gm): State<AppState>, headers: HeaderMap) -> Response
 /// GET /api/usage — cloud usage summary, or `{}` in local mode.
 async fn get_usage_summary(State(gm): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
     Ok(Json(gm.usage().await?.unwrap_or_else(|| serde_json::json!({}))))
+}
+
+// ---------------------------------------------------------------------------
+// Cloud-interest waitlist (invite-only phase)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct WaitlistRequest {
+    email: String,
+    #[serde(default)]
+    pay_interest: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+/// POST /api/waitlist — register interest (and willingness to pay) in the hosted
+/// cloud. Origin-guarded. Submits to the Supabase `waitlist` table via the baked
+/// anon key; works in local mode too (that's who we're collecting).
+async fn join_waitlist(headers: HeaderMap, Json(body): Json<WaitlistRequest>) -> Response {
+    if !origin_ok(&headers) {
+        return forbidden_origin();
+    }
+    let email = body.email.trim();
+    if !email.contains('@') || email.len() < 3 {
+        return bad_request("a valid email is required");
+    }
+    let pay_interest = body.pay_interest.as_deref().unwrap_or("unknown");
+    let note = body.note.as_deref().map(str::trim).filter(|s| !s.is_empty());
+
+    match gleanmark_core::waitlist::submit_waitlist(email, pay_interest, note).await {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response(),
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
 }
 
 #[cfg(unix)]

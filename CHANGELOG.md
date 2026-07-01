@@ -2,6 +2,17 @@
 
 All notable changes to GleanMark will be documented in this file.
 
+## [0.1.3] - 2026-07-01
+
+### Added
+
+- **Optional Cloud backend (invite-only)** — sync bookmarks across devices via a hosted gateway. Embeddings are still computed on-device; only the pre-computed vectors + content are sent to your private, per-account collection. Turn it on in **Settings → Backend → Cloud** and sign in — no URLs or keys to configure. Local remains the default and is unchanged.
+- **Cloud interest waitlist** — a **Settings → "Interested in GleanMark Cloud?"** form to request access (and say whether you'd pay), since cloud is invite-only for now.
+
+### Changed
+
+- README repositioned as local-first with an optional invite-only Cloud backend.
+
 ## [0.1.2] - 2026-04-04
 
 ### Fixed

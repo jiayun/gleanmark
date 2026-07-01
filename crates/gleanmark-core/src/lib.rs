@@ -6,6 +6,7 @@ pub mod qdrant_manager;
 pub mod search;
 pub mod session;
 pub mod storage;
+pub mod waitlist;
 
 // The `GleanMark` facade does client-side embedding, so it (and only it) needs
 // the `embed` feature. The cloud gateway uses `storage`/`search`/`backend`

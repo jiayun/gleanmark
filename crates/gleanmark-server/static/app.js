@@ -125,6 +125,16 @@ const API = {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   },
+
+  async joinWaitlist(payload) {
+    const res = await fetch('/api/waitlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+    return res.json();
+  },
 };
 
 // View Switcher
@@ -343,12 +353,6 @@ document.addEventListener('click', e => {
 });
 
 // Settings View
-function updateCloudFieldsVisibility() {
-  const checked = document.querySelector('input[name="mode"]:checked');
-  const cloudFields = document.getElementById('cloud-fields');
-  cloudFields.style.display = checked && checked.value === 'cloud' ? 'flex' : 'none';
-}
-
 async function loadSettings() {
   const current = document.getElementById('settings-current');
   const status = document.getElementById('settings-status');
@@ -360,14 +364,10 @@ async function loadSettings() {
     document.querySelectorAll('input[name="mode"]').forEach(r => {
       r.checked = r.value === c.mode;
     });
-    document.getElementById('gateway-url').value = c.gateway_url || '';
-    document.getElementById('supabase-url').value = c.supabase_url || '';
-    document.getElementById('supabase-anon-key').value = c.supabase_anon_key || '';
-    updateCloudFieldsVisibility();
 
     current.className = 'status';
     current.textContent = c.mode === 'cloud'
-      ? `Current: Cloud — ${c.gateway_url || '(no URL set)'}`
+      ? `Current: Cloud — ${c.gateway_url || 'GleanMark hosted'}`
       : 'Current: Local (bundled Qdrant)';
   } catch (err) {
     current.className = 'status error';
@@ -432,10 +432,6 @@ async function loadUsage() {
   }
 }
 
-document.querySelectorAll('input[name="mode"]').forEach(r =>
-  r.addEventListener('change', updateCloudFieldsVisibility)
-);
-
 document.getElementById('settings-form').addEventListener('submit', async e => {
   e.preventDefault();
   const status = document.getElementById('settings-status');
@@ -443,16 +439,6 @@ document.getElementById('settings-form').addEventListener('submit', async e => {
   if (!checked) return;
 
   const payload = { mode: checked.value };
-  if (checked.value === 'cloud') {
-    payload.gateway_url = document.getElementById('gateway-url').value.trim();
-    payload.supabase_url = document.getElementById('supabase-url').value.trim();
-    payload.supabase_anon_key = document.getElementById('supabase-anon-key').value.trim();
-    if (!payload.gateway_url || !payload.supabase_url || !payload.supabase_anon_key) {
-      status.className = 'status error';
-      status.textContent = 'Gateway URL, Supabase URL and anon key are all required for cloud mode.';
-      return;
-    }
-  }
 
   status.className = 'status';
   status.textContent = 'Saving...';
@@ -498,6 +484,29 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
   } catch (err) {
     status.className = 'status error';
     status.textContent = 'Sign-out failed: ' + err.message;
+  }
+});
+
+document.getElementById('waitlist-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const status = document.getElementById('waitlist-status');
+  const email = document.getElementById('waitlist-email').value.trim();
+  if (!email) return;
+
+  status.className = 'status';
+  status.textContent = 'Sending...';
+  try {
+    await API.joinWaitlist({
+      email,
+      pay_interest: document.getElementById('waitlist-pay').value,
+      note: document.getElementById('waitlist-note').value.trim() || null,
+    });
+    document.getElementById('waitlist-form').reset();
+    status.className = 'status success';
+    status.textContent = "Thanks! You're on the list — we'll be in touch.";
+  } catch (err) {
+    status.className = 'status error';
+    status.textContent = 'Something went wrong: ' + err.message;
   }
 });
 

@@ -77,13 +77,8 @@
             </label>
             <label class="radio-row">
               <input type="radio" name="mode" value="cloud">
-              <span>Cloud — remote gateway (sign in below)</span>
+              <span>Cloud — GleanMark hosted (sign in below)</span>
             </label>
-            <div id="cloud-fields" class="cloud-fields">
-              <input type="text" id="gateway-url" placeholder="Gateway URL (https://...)">
-              <input type="text" id="supabase-url" placeholder="Supabase URL (https://xxxx.supabase.co)">
-              <input type="text" id="supabase-anon-key" placeholder="Supabase anon (public) key">
-            </div>
             <button type="submit">Save</button>
           </form>
           <div id="settings-status" class="status"></div>
@@ -102,6 +97,26 @@
           </form>
           <button id="logout-btn" class="btn-secondary hidden">Sign out</button>
           <div id="login-status" class="status"></div>
+        </div>
+
+        <!-- Cloud interest waitlist (invite-only phase) -->
+        <div class="ie-section" id="waitlist-section">
+          <h2>Interested in GleanMark Cloud?</h2>
+          <p class="hint">Cloud is invite-only right now — sync your bookmarks across devices, no local setup. Leave your email and we'll reach out.</p>
+          <form id="waitlist-form" class="settings-form">
+            <input type="email" id="waitlist-email" placeholder="Email" autocomplete="email">
+            <label class="radio-row" for="waitlist-pay">
+              <span>Would you pay for it?</span>
+            </label>
+            <select id="waitlist-pay" class="wl-select">
+              <option value="not_sure">Not sure yet</option>
+              <option value="free_only">Only if it's free</option>
+              <option value="would_pay">I'd pay monthly</option>
+            </select>
+            <input type="text" id="waitlist-note" placeholder="Anything you'd want from cloud? (optional)">
+            <button type="submit">Request access</button>
+          </form>
+          <div id="waitlist-status" class="status"></div>
         </div>
       </section>
     </main>
