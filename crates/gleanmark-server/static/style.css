@@ -392,7 +392,7 @@ nav a.active {
   cursor: pointer;
 }
 
-.settings-form input,
+.settings-form input:not([type="radio"]),
 .settings-form select {
   width: 100%;
   box-sizing: border-box;
@@ -407,9 +407,15 @@ nav a.active {
   transition: border-color 0.15s;
 }
 
-.settings-form input:focus,
+.settings-form input:not([type="radio"]):focus,
 .settings-form select:focus {
   border-color: var(--accent);
+}
+
+.settings-form .radio-row input[type="radio"] {
+  width: auto;
+  flex: none;
+  margin: 0;
 }
 
 .settings-form button {

@@ -2,6 +2,12 @@
 
 All notable changes to GleanMark will be documented in this file.
 
+## [0.1.4] - 2026-07-01
+
+### Fixed
+
+- Fix broken Settings → Backend layout: the Local/Cloud radio buttons were stretched full-width, pushing their labels off to the side. Radio inputs are now excluded from the full-width field styling.
+
 ## [0.1.3] - 2026-07-01
 
 ### Added
