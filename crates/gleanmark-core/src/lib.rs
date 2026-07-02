@@ -12,7 +12,7 @@ pub mod waitlist;
 // the `embed` feature. The cloud gateway uses `storage`/`search`/`backend`
 // directly and builds this crate with `--no-default-features`.
 #[cfg(feature = "embed")]
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "embed")]
 use chrono::Utc;
@@ -37,6 +37,20 @@ use crate::session::SessionManager;
 use crate::storage::Storage;
 #[cfg(feature = "embed")]
 use std::sync::Arc;
+
+/// Expand a leading `~` to the home directory. `~` is a shell-ism that `std`
+/// paths don't resolve, and the UI defaults the export path to
+/// `~/gleanmark-export.json`; non-`~` paths pass through unchanged.
+#[cfg(feature = "embed")]
+fn expand_tilde(path: &Path) -> PathBuf {
+    match path.strip_prefix("~") {
+        Ok(rest) => match dirs::home_dir() {
+            Some(home) => home.join(rest),
+            None => path.to_path_buf(),
+        },
+        Err(_) => path.to_path_buf(),
+    }
+}
 
 #[cfg(feature = "embed")]
 pub struct GleanMark {
@@ -172,7 +186,8 @@ impl GleanMark {
 
         let count = all.len();
         let json = serde_json::to_string_pretty(&all)?;
-        std::fs::write(path, json)?;
+        let path = expand_tilde(path);
+        std::fs::write(&path, json)?;
 
         info!("Exported {count} bookmarks to {}", path.display());
         Ok(count)
@@ -208,7 +223,8 @@ impl GleanMark {
     }
 
     pub async fn import_json(&self, path: &Path) -> Result<usize> {
-        let data = std::fs::read_to_string(path)?;
+        let path = expand_tilde(path);
+        let data = std::fs::read_to_string(&path)?;
         let bookmarks: Vec<Bookmark> = serde_json::from_str(&data)?;
         let count = bookmarks.len();
 

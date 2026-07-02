@@ -2,6 +2,12 @@
 
 All notable changes to GleanMark will be documented in this file.
 
+## [0.1.5] - 2026-07-02
+
+### Fixed
+
+- Fix export/import failing when the path starts with `~` (including the default `~/gleanmark-export.json`): a leading `~` is now expanded to the home directory. Applies to the desktop app, CLI, and server.
+
 ## [0.1.4] - 2026-07-01
 
 ### Fixed
