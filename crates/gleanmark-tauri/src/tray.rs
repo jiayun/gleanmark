@@ -49,13 +49,21 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
-pub fn check_for_updates(app: &AppHandle) {
+/// Check for updates. When `silent` (used for the automatic check on startup),
+/// stay quiet unless an update is actually available: no "you're up to date"
+/// dialog and no error popups — just log. The interactive menu path passes
+/// `silent = false`.
+pub fn check_for_updates(app: &AppHandle, silent: bool) {
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         let updater = match handle.updater() {
             Ok(u) => u,
             Err(e) => {
-                show_error(&handle, &format!("Updater error: {e}"));
+                if silent {
+                    tracing::warn!("Updater unavailable: {e}");
+                } else {
+                    show_error(&handle, &format!("Updater error: {e}"));
+                }
                 return;
             }
         };
@@ -63,16 +71,22 @@ pub fn check_for_updates(app: &AppHandle) {
         let update = match updater.check().await {
             Ok(Some(update)) => update,
             Ok(None) => {
-                handle
-                    .dialog()
-                    .message("You're running the latest version.")
-                    .title("GleanMark")
-                    .kind(MessageDialogKind::Info)
-                    .blocking_show();
+                if !silent {
+                    handle
+                        .dialog()
+                        .message("You're running the latest version.")
+                        .title("GleanMark")
+                        .kind(MessageDialogKind::Info)
+                        .blocking_show();
+                }
                 return;
             }
             Err(e) => {
-                show_error(&handle, &format!("Check failed: {e}"));
+                if silent {
+                    tracing::warn!("Update check failed: {e}");
+                } else {
+                    show_error(&handle, &format!("Check failed: {e}"));
+                }
                 return;
             }
         };

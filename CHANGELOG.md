@@ -2,6 +2,12 @@
 
 All notable changes to GleanMark will be documented in this file.
 
+## [0.1.6] - 2026-07-02
+
+### Added
+
+- Automatic update check on launch: a few seconds after startup the app silently checks for a newer version and prompts to install only when one is available. Previously updates were checked only via the "Check for Updates…" menu item, so fixes didn't reach users unless they checked manually.
+
 ## [0.1.5] - 2026-07-02
 
 ### Fixed

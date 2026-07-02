@@ -66,7 +66,7 @@ fn main() {
 
             app.on_menu_event(move |app, event| {
                 if event.id.as_ref() == "check_update" {
-                    tray::check_for_updates(app);
+                    tray::check_for_updates(app, false);
                 }
             });
 
@@ -132,6 +132,14 @@ async fn start_app(handle: &tauri::AppHandle) -> anyhow::Result<()> {
     if let Some(splash) = handle.get_webview_window("splashscreen") {
         let _ = splash.close();
     }
+
+    // Auto-check for updates a few seconds after launch — silent, so it only
+    // surfaces when an update is actually available (no nag on a clean start).
+    let update_handle = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        tray::check_for_updates(&update_handle, true);
+    });
 
     // Keep GleanMark alive for the app lifetime
     // QdrantManager::drop will kill Qdrant on process exit
