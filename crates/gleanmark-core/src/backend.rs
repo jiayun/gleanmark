@@ -169,7 +169,25 @@ async fn ensure_ok(resp: reqwest::Response) -> Result<reqwest::Response> {
         Ok(resp)
     } else {
         let body = resp.text().await.unwrap_or_default();
-        Err(Error::Gateway(format!("HTTP {status}: {body}")))
+        Err(classify_gateway_error(status, &body))
+    }
+}
+
+/// Map a non-2xx gateway response to an error. A JSON body carrying
+/// `code: "quota_exceeded"` becomes the structured [`Error::QuotaExceeded`]
+/// (keyed on the code, not the 402 status, so proxies or future status
+/// changes can't break it); anything else stays an opaque gateway error.
+fn classify_gateway_error(status: reqwest::StatusCode, body: &str) -> Error {
+    match serde_json::from_str::<serde_json::Value>(body) {
+        Ok(v) if v["code"] == "quota_exceeded" => Error::QuotaExceeded {
+            message: v["error"]
+                .as_str()
+                .unwrap_or("Bookmark limit reached")
+                .to_string(),
+            used: v["used"].as_u64(),
+            limit: v["limit"].as_u64(),
+        },
+        _ => Error::Gateway(format!("HTTP {status}: {body}")),
     }
 }
 
@@ -259,5 +277,45 @@ impl Backend for GatewayBackend {
             .await?;
         let resp = ensure_ok(resp).await?;
         Ok(Some(resp.json().await?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::classify_gateway_error;
+    use crate::error::Error;
+    use reqwest::StatusCode;
+
+    #[test]
+    fn quota_body_becomes_structured_error() {
+        let body = r#"{"error":"Monthly bookmark limit reached (30/30). Upgrade your plan to save more.","code":"quota_exceeded","scope":"monthly","used":30,"limit":30,"plan":"free"}"#;
+        match classify_gateway_error(StatusCode::PAYMENT_REQUIRED, body) {
+            Error::QuotaExceeded { message, used, limit } => {
+                assert!(message.contains("Monthly bookmark limit reached"));
+                assert_eq!(used, Some(30));
+                assert_eq!(limit, Some(30));
+            }
+            other => panic!("expected QuotaExceeded, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn plain_json_error_stays_gateway_error() {
+        let body = r#"{"error":"usage lookup failed"}"#;
+        match classify_gateway_error(StatusCode::BAD_GATEWAY, body) {
+            Error::Gateway(msg) => {
+                assert!(msg.contains("502"));
+                assert!(msg.contains("usage lookup failed"));
+            }
+            other => panic!("expected Gateway, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn non_json_body_stays_gateway_error() {
+        match classify_gateway_error(StatusCode::INTERNAL_SERVER_ERROR, "boom") {
+            Error::Gateway(msg) => assert!(msg.contains("boom")),
+            other => panic!("expected Gateway, got: {other}"),
+        }
     }
 }

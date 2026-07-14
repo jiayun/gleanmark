@@ -2,6 +2,16 @@
 
 All notable changes to GleanMark will be documented in this file.
 
+## [0.1.7] - 2026-07-14
+
+### Added
+
+- Cloud usage display now shows plan limits: "This month: 3 / 30 · Total: 29 / 500". Unlimited plans show plain counts.
+
+### Changed
+
+- Hitting a cloud plan limit now shows a clear message (e.g. "Monthly bookmark limit reached (30/30). Upgrade your plan to save more.") in the extension popup, web UI, and CLI, instead of a raw gateway error string.
+
 ## [0.1.6] - 2026-07-02
 
 ### Added

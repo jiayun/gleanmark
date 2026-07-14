@@ -23,6 +23,16 @@ pub enum Error {
     #[error("Gateway error: {0}")]
     Gateway(String),
 
+    /// The cloud gateway denied a save because a plan limit was hit (HTTP 402
+    /// with `code: "quota_exceeded"`). `message` is the gateway's
+    /// user-presentable text, so `Display` is already friendly for CLI/UI.
+    #[error("{message}")]
+    QuotaExceeded {
+        message: String,
+        used: Option<u64>,
+        limit: Option<u64>,
+    },
+
     #[error("Auth error: {0}")]
     Auth(String),
 

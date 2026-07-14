@@ -1930,7 +1930,7 @@ dependencies = [
 
 [[package]]
 name = "gleanmark-tauri"
-version = "0.1.5"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "axum 0.8.8",

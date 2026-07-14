@@ -415,7 +415,8 @@ async function loadAuthStatus() {
   }
 }
 
-// Show "This month: N · Total: M · Plan: free" when usage tracking is on.
+// Show "This month: N / 30 · Total: M / 500 · Plan: free" when usage tracking
+// is on. A null/absent limit means unlimited — no denominator shown.
 async function loadUsage() {
   const line = document.getElementById('usage-line');
   try {
@@ -425,7 +426,9 @@ async function loadUsage() {
       return;
     }
     const plan = u.plan || 'free';
-    line.textContent = `This month: ${u.this_month} · Total: ${u.bookmarks_total ?? 0} · Plan: ${plan}`;
+    const fmt = (n, lim) => (lim === null || lim === undefined) ? `${n}` : `${n} / ${lim}`;
+    line.textContent = `This month: ${fmt(u.this_month, u.limit)} · ` +
+                       `Total: ${fmt(u.bookmarks_total ?? 0, u.total_limit)} · Plan: ${plan}`;
     line.classList.remove('hidden');
   } catch {
     line.classList.add('hidden');

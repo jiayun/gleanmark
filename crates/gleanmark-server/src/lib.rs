@@ -347,9 +347,13 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = match &self.0 {
             gleanmark_core::error::Error::NotFound(_) => StatusCode::NOT_FOUND,
+            gleanmark_core::error::Error::QuotaExceeded { .. } => StatusCode::PAYMENT_REQUIRED,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        let body = serde_json::json!({ "error": self.0.to_string() });
+        let mut body = serde_json::json!({ "error": self.0.to_string() });
+        if matches!(&self.0, gleanmark_core::error::Error::QuotaExceeded { .. }) {
+            body["code"] = "quota_exceeded".into();
+        }
         (status, Json(body)).into_response()
     }
 }
@@ -385,5 +389,43 @@ async fn static_handler(uri: axum::http::Uri) -> impl IntoResponse {
                 .into_response(),
             None => StatusCode::NOT_FOUND.into_response(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AppError;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    async fn body_json(resp: axum::response::Response) -> serde_json::Value {
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn quota_exceeded_maps_to_402_with_code() {
+        let err = AppError(gleanmark_core::error::Error::QuotaExceeded {
+            message: "Monthly bookmark limit reached (30/30). Upgrade your plan to save more."
+                .into(),
+            used: Some(30),
+            limit: Some(30),
+        });
+        let resp = err.into_response();
+        assert_eq!(resp.status(), StatusCode::PAYMENT_REQUIRED);
+        let body = body_json(resp).await;
+        assert_eq!(body["code"], "quota_exceeded");
+        assert!(body["error"].as_str().unwrap().contains("Monthly"));
+    }
+
+    #[tokio::test]
+    async fn other_errors_stay_500_without_code() {
+        let err = AppError(gleanmark_core::error::Error::Gateway("boom".into()));
+        let resp = err.into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = body_json(resp).await;
+        assert!(body.get("code").is_none());
     }
 }
